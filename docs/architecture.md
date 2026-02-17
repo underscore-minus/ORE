@@ -1,8 +1,20 @@
-# ORE Architecture (v0.2)
+# ORE Architecture (v0.2.1)
 
-**Version**: v0.2 (stateless; single-turn or interactive REPL)  
+**Version**: v0.2.1 (stateless; single-turn or interactive REPL; semantics locked)  
 **Language**: Python 3.10 (PEP 8, `black`-formatted)  
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
+
+---
+
+## Semantics: Interactive mode (locked v0.2.1)
+
+**Interactive ≠ Conversational.** Interactive mode is a REPL: multiple separate turns in one process. It is *not* a conversation.
+
+- **No memory** — the reasoner never sees prior turns.
+- **No accumulation** — no message history is built or passed.
+- **No hidden context** — each turn invokes `ORE.execute` with only the current user input; the message list is always system + this single user message.
+
+Any change that adds history, context window, or conversational continuity would be a new capability (e.g. a later version), not a redefinition of “interactive”.
 
 ---
 
