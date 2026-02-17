@@ -1,5 +1,5 @@
 """
-ORE: Orchestrated Reasoning Engine v0.2.
+ORE: Orchestrated Reasoning Engine v0.3.
 Irreducible loop: Input -> Reasoner -> Output.
 """
 
@@ -7,7 +7,7 @@ from .cli import run
 from .core import ORE
 from .models import default_model, fetch_models
 from .reasoner import AyaReasoner, Reasoner
-from .types import Message, Response
+from .types import Message, Response, Session
 
 __all__ = [
     "run",
@@ -16,6 +16,7 @@ __all__ = [
     "AyaReasoner",
     "Message",
     "Response",
+    "Session",
     "fetch_models",
     "default_model",
 ]

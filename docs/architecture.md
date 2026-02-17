@@ -1,20 +1,33 @@
-# ORE Architecture (v0.2.1)
+# ORE Architecture (v0.3)
 
-**Version**: v0.2.1 (stateless; single-turn or interactive REPL; semantics locked)  
-**Language**: Python 3.10 (PEP 8, `black`-formatted)  
+**Version**: v0.3 (explicit session state; three execution modes)
+**Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
 ---
 
-## Semantics: Interactive mode (locked v0.2.1)
+## Execution Modes
 
-**Interactive ≠ Conversational.** Interactive mode is a REPL: multiple separate turns in one process. It is *not* a conversation.
+ORE v0.3 supports three modes, all sharing the same loop:
 
-- **No memory** — the reasoner never sees prior turns.
-- **No accumulation** — no message history is built or passed.
-- **No hidden context** — each turn invokes `ORE.execute` with only the current user input; the message list is always system + this single user message.
+| Mode | Flag | Session | History visible to reasoner |
+|------|------|---------|----------------------------|
+| Single-turn | _(none)_ | None | No |
+| Interactive REPL | `--interactive` / `-i` | None | No (unchanged from v0.2) |
+| Conversational REPL | `--conversational` / `-c` | `Session` | Yes |
 
-Any change that adds history, context window, or conversational continuity would be a new capability (e.g. a later version), not a redefinition of “interactive”.
+**Interactive ≠ Conversational.** Interactive mode (v0.2) is a REPL where turns are isolated. Conversational mode (v0.3) is a REPL where turns accumulate in an explicit `Session`. The distinction is versioned and locked.
+
+---
+
+## Semantics: Conversational mode (v0.3)
+
+- **Session** — an ordered list of `Message` objects holding prior user and assistant turns.
+- **Explicit state** — the session is passed as an argument to `ORE.execute()`; it is never stored inside the `ORE` object.
+- **System message excluded** — Aya's system prompt is injected fresh each turn and is not part of the session.
+- **Append-only** — `ORE.execute()` appends the user message and the assistant response after each turn. No messages are removed or reordered.
+
+Any change that adds implicit history (storing state inside `ORE` without passing it as an argument) would violate the foundation's "no hidden steps" invariant.
 
 ---
 
@@ -24,16 +37,23 @@ Any change that adds history, context window, or conversational continuity would
   - **User command** → `python main.py "prompt"` (or CLI options).
   - **`main.py`** loads environment (`.env` via `python-dotenv`) and delegates to CLI.
   - **`ore.cli`**:
-    - Parses CLI arguments (including `--interactive` / `-i` for REPL mode).
+    - Parses CLI arguments (`--interactive`, `--conversational`, `--model`, `--list-models`).
+    - Validates mutual exclusivity of `--interactive` and `--conversational`.
     - Optionally lists available Ollama models.
     - Chooses a model (explicit `--model` or auto-selected default).
     - Instantiates the orchestrator `ORE` with an `AyaReasoner`.
-    - Either runs a single turn (prompt on command line) or an interactive loop; each turn calls `engine.execute(prompt)` once — no message history.
+    - Runs the appropriate mode:
+      - Single-turn: calls `engine.execute(prompt)`.
+      - Interactive loop (`-i`): calls `engine.execute(line)` per turn — no session.
+      - Conversational loop (`-c`): creates a `Session()`, calls `engine.execute(line, session=session)` per turn.
     - Prints the assistant output and metadata to stdout.
   - **`ore.core.ORE`**:
-    - Loads Aya’s **system persona** from `ore/prompts/aya.txt`.
-    - Builds a minimal two-message list: system + user.
+    - Loads Aya's **system persona** from `ore/prompts/aya.txt`.
+    - Builds the message list for each turn:
+      - Without session: `[system, user]`
+      - With session: `[system] + session.messages + [user]`
     - Calls the configured **`Reasoner`** backend.
+    - If a session was provided, appends the user and assistant messages to it.
   - **`ore.reasoner.AyaReasoner`**:
     - Translates `Message` objects → Ollama `chat` payload.
     - Calls local Ollama via `ollama.Client.chat`.
@@ -43,10 +63,12 @@ Any change that adds history, context window, or conversational continuity would
   - **Separation of concerns**:
     - CLI/UI layer is isolated from reasoning and model selection.
     - Orchestration (`ORE`) is separate from any particular LLM backend (`Reasoner` interface).
+    - Session ownership belongs to the CLI, not the engine.
   - **Pluggable backends**:
-    - `Reasoner` is an abstract base class; additional reasoners (remote API, tools, memory) can be added without changing the CLI.
+    - `Reasoner` is an abstract base class; additional reasoners can be added without changing the CLI or session logic.
   - **Data-first contracts**:
-    - `Message` and `Response` are simple dataclasses designed to support multi-turn and memory later.
+    - `Message`, `Response`, and `Session` are simple dataclasses.
+    - Session history is a plain `List[Message]` — no magic, no hidden accumulation.
 
 ---
 
@@ -58,8 +80,6 @@ Any change that adds history, context window, or conversational continuity would
 - **Responsibilities**:
   - Load environment variables from `.env` using `dotenv.load_dotenv()`.
   - Call `ore.cli.run()` to hand off to the CLI layer.
-- **Notes**:
-  - This file is what the README’s `python main.py ...` commands execute.
 
 ### `ore/__init__.py`
 
@@ -68,50 +88,40 @@ Any change that adds history, context window, or conversational continuity would
   - `run` (CLI entry function).
   - `ORE` (orchestrator engine).
   - `Reasoner`, `AyaReasoner` (reasoner abstraction + default implementation).
-  - `Message`, `Response` (data contracts).
+  - `Message`, `Response`, `Session` (data contracts).
   - `fetch_models`, `default_model` (Ollama model utilities).
-- **Purpose**:
-  - Allows consumers to import `ore` as a coherent package (e.g. `from ore import ORE, AyaReasoner`).
 
 ### `ore/cli.py`
 
 - **Role**: **CLI layer** — argument parsing and user interaction via stdout/stderr.
 - **Key responsibilities**:
   - Build an `argparse.ArgumentParser` with:
-    - Positional `prompt` (optional when `--list-models` or `--interactive` is used).
-    - Optional `--model NAME` flag to select a specific Ollama model.
-    - `--list-models` flag to list all locally available Ollama models and exit.
-    - `--interactive` / `-i` flag to run an interactive loop (REPL); each turn is stateless, no history.
-  - Execute **model listing**:
-    - Call `fetch_models()` to inspect Ollama.
-    - Handle “no models installed” by printing guidance and exiting with non-zero status.
-  - Execute **reasoning run** (single-turn or interactive):
-    - Validate that `prompt` is present when not listing models and not using `--interactive`.
-    - Determine `model_id`:
-      - Use explicit `--model`, or
-      - Use `default_model()` to auto-select from preferred models (`llama3.2`, `llama3.1`, `llama3`, `mistral`, `llama2`, `qwen2.5`) or first available.
-    - Instantiate `ORE(AyaReasoner(model_id=model_id))`.
-    - **Single-turn**: call `engine.execute(prompt)` once and print response.
-    - **Interactive (`-i`)**: loop reading user input; for each line (until `quit`/`exit` or EOF), call `engine.execute(line)` and print response; no message history between turns.
-    - Print for each response: `[AYA]:` content and `[Metadata]:` ID, model ID, optional diagnostic metadata.
+    - Positional `prompt` (optional in REPL modes).
+    - Optional `--model NAME` flag.
+    - `--list-models` flag to list Ollama models and exit.
+    - `--interactive` / `-i` flag — v0.2 stateless REPL.
+    - `--conversational` / `-c` flag — v0.3 session-aware REPL.
+  - Enforce mutual exclusivity of `--interactive` and `--conversational`.
+  - For `--conversational`: create a `Session()` before the loop and pass it to `engine.execute()` each turn.
+  - Print per-response: `[AYA]:` content and `[Metadata]:` ID, model ID, optional diagnostic metadata.
 - **Why it exists**:
-  - Cleanly separates *how* users run ORE (CLI UX) from *how* reasoning is performed.
+  - Cleanly separates how users run ORE from how reasoning is performed.
+  - Owns session lifecycle for conversational mode.
 
 ### `ore/core.py`
 
-- **Role**: **Orchestrator / engine** that wires the system persona to a `Reasoner`.
+- **Role**: **Orchestrator / engine** that wires the system persona and optional session to a `Reasoner`.
 - **Key responsibilities**:
   - Hold a reference to a `Reasoner` implementation.
-  - Load Aya’s **system prompt** from `ore/prompts/aya.txt` (data, not logic).
-  - Construct the message list for a single stateless turn:
-    - `Message(role="system", content=system_prompt)`
-    - `Message(role="user", content=user_prompt)`
+  - Load Aya's **system prompt** from `ore/prompts/aya.txt`.
+  - Construct the message list for each turn:
+    - `[system]` + `session.messages` (if any) + `[user]`
   - Delegate to `self.reasoner.reason(messages)` and return its `Response`.
+  - If a session was provided, append the user and assistant messages after the call.
 - **Why it exists**:
-  - Central place to:
-    - Enforce the irreducible loop structure.
-    - Inject persona / rules without mixing them into the LLM backend logic.
-    - Provide a future extension point for memory, tools, and multi-turn conversations.
+  - Central place to enforce the loop structure.
+  - Inject persona without mixing it into the LLM backend.
+  - Session threading is explicit here — no implicit state on `ORE`.
 
 ### `ore/reasoner.py`
 
@@ -119,50 +129,52 @@ Any change that adds history, context window, or conversational continuity would
 - **Components**:
   - `Reasoner` (abstract base class):
     - Declares `reason(self, messages: List[Message]) -> Response`.
-    - Intended to be implemented by any backend that can produce an answer from a list of messages.
   - `AyaReasoner(Reasoner)`:
     - Uses `ollama.Client` as the underlying LLM driver.
-    - In `__init__`, stores the `model_id` (e.g. `llama3.2:latest`) and constructs an Ollama client.
-    - In `reason`:
-      - Maps each `Message` to Ollama’s expected `{"role": ..., "content": ...}` shape.
-      - Calls `client.chat(model=self.model_id, messages=payload)`.
-      - Extracts the `content` from the returned message.
-      - Collects optional **diagnostic** metadata fields (eval counts, durations) into a dictionary.
-      - Returns a `Response` with the content, model ID, and metadata.
+    - Maps each `Message` to Ollama's `{"role": ..., "content": ...}` shape.
+    - Calls `client.chat(model=self.model_id, messages=payload)`.
+    - Returns a `Response` with content, model ID, and diagnostic metadata.
 - **Why it exists**:
-  - Decouples *how* we talk to an LLM (Ollama today) from the orchestrator.
-  - Makes it straightforward to add more sophisticated or remote backends later (e.g. cloud APIs, tool-enabled reasoning).
+  - Decouples how we talk to an LLM from the orchestrator.
+  - Unchanged in v0.3 — the reasoner only receives a list of messages; it has no knowledge of sessions.
 
 ### `ore/models.py`
 
 - **Role**: **Model discovery and selection** for Ollama.
-- **Key responsibilities**:
-  - `fetch_models(host: str | None = None) -> List[str]`:
-    - Creates an `ollama.Client` (optionally pointed at a custom `host`).
-    - Calls `client.list()` to retrieve models from the local Ollama server.
-    - Normalizes the `model` field into a `List[str]` (e.g. `["llama3.2:latest", "mistral:latest"]`).
-  - `default_model(host: str | None = None) -> str | None`:
-    - Retrieves all available models via `fetch_models`.
-    - Builds a mapping from base name (e.g. `llama3.2`) to first full name (e.g. `llama3.2:latest`).
-    - Iterates through `PREFERRED_MODELS` in order and returns the first match, or falls back to the first available model.
-    - Returns `None` if no models are available.
-- **Why it exists**:
-  - Encapsulates model selection policies in a single location.
-  - Allows the CLI and future code to rely on a simple `default_model()` call instead of handling Ollama specifics.
+- **Unchanged from v0.2.**
 
 ### `ore/types.py`
 
-- **Role**: **Core data contracts** for messages and responses.
+- **Role**: **Core data contracts** for messages, responses, and sessions.
 - **Components**:
   - `Message` dataclass:
     - Fields: `role`, `content`, auto-generated `id`, `timestamp`.
-    - Represents any message in a conversation (`"system"`, `"user"`, or `"assistant"`).
   - `Response` dataclass:
     - Fields: `content`, `model_id`, auto-generated `id`, `timestamp`, `metadata`.
-    - `metadata` is **diagnostic and unstable** in v0.2: it may include token usage, latencies, or backend-specific fields, and its exact schema may change between versions.
+    - `metadata` is **diagnostic and unstable** until v0.3.1.
+  - `Session` dataclass (new in v0.3):
+    - Fields: `messages` (List[Message]), auto-generated `id`, `created_at`.
+    - Accumulates user and assistant turns across `ORE.execute()` calls.
+    - The system message is never stored here.
 - **Why it exists**:
-  - Provides a stable schema that can evolve toward richer conversational histories and memory.
-  - Keeps type hints and structure explicit for easier maintenance and refactoring.
+  - Provides stable, versioned schemas for the entire data flow.
+  - `Session` makes conversational state explicit and inspectable.
+
+### `Response.metadata` — known keys (schema locked in v0.3.1)
+
+`AyaReasoner` (Ollama backend) populates `metadata` on a best-effort basis.
+The following keys are present when the Ollama server returns them:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `eval_count` | `int` | Tokens generated in the response |
+| `prompt_eval_count` | `int` | Tokens in the prompt sent to the model |
+| `eval_duration` | `int` | Response generation time (nanoseconds) |
+| `prompt_eval_duration` | `int` | Prompt processing time (nanoseconds) |
+
+These keys will be formally committed to as the stable contract in v0.3.1.
+Until then, treat them as present-when-available but structurally unstable.
+Custom reasoner backends may omit all keys or add their own.
 
 ---
 
@@ -170,87 +182,51 @@ Any change that adds history, context window, or conversational continuity would
 
 ### Python and environment
 
-- **Python version**: **3.10** (as used in the virtual environment and documented in `README.md`).
-- **Virtual environment**:
-  - Project assumes a `.venv` created via `python3.10 -m venv .venv`.
-  - Dependencies installed into `.venv` via `pip install -r requirements.txt`.
+- **Python version**: **3.10**.
+- **Virtual environment**: `.venv` created via `python3.10 -m venv .venv`.
 
 ### Runtime dependencies (`requirements.txt`)
 
-- **`ollama>=0.3.0`**
-  - Python client for interacting with the local Ollama server.
-  - Used in:
-    - `ore.reasoner.AyaReasoner` (`ollama.Client.chat`).
-    - `ore.models.fetch_models` / `default_model` (`ollama.Client.list`).
-  - **Requirement**: A compatible **Ollama server** running locally with at least one model pulled (e.g. `ollama pull llama3.2`).
+- **`ollama>=0.3.0`** — Python client for the local Ollama server.
+- **`python-dotenv>=1.0.0`** — Loads `.env` environment variables.
 
-- **`python-dotenv>=1.0.0`**
-  - Loads environment variables from a `.env` file into `os.environ`.
-  - Used in:
-    - `main.py` via `load_dotenv()`.
-  - **Purpose**:
-    - Let users configure environment-level settings (future API keys, host overrides, etc.) without hard-coding them.
+### Dev/tooling dependencies
 
-### Dev/tooling dependencies (from local `.venv`)
-
-- The `.venv` includes **`black`** and its transitive dependencies:
-  - Code is formatted with `black`, following PEP 8 style conventions.
-  - Not required at runtime, but recommended for contributing or modifying the project.
+- **`black`** — code formatting (PEP 8).
 
 ---
 
 ## Component Purposes at a Glance
 
-- **`README.md`**
-  - Developer-facing quick start: cloning, environment setup, and example commands.
-  - Explains layout and v0.2 limitations (stateless, no tools, one-turn).
-
-- **`docs/foundation.md`**
-  - Foundation and invariants for ORE (irreducible loop, stateless v0.1.x, separation of concerns, versioning rules).
-
-- **`docs/architecture.md` (this file)**
-  - High-level architectural overview for v0.2.
-  - Describes modules, data contracts, and external dependencies.
-  - Clarifies that response metadata is diagnostic and unstable.
-
-- **`main.py`**
-  - Thin entry point that wires environment loading to the CLI.
-
-- **`ore/cli.py`**
-  - CLI UX: argument parsing, model listing, user input handling, and human-readable output.
-
-- **`ore/core.py`**
-  - Orchestration logic: constructs the minimal loop and injects Aya’s persona from `ore/prompts/aya.txt`.
-
-- **`ore/reasoner.py`**
-  - Abstraction and Ollama-based implementation of the reasoning backend.
-
-- **`ore/models.py`**
-  - Model discovery and default selection policy for Ollama models.
-
-- **`ore/types.py`**
-  - Typed data contracts (`Message`, `Response`) used across orchestrator and reasoners.
-
-- **`ore/__init__.py`**
-  - Package API surface for importing ORE components in other Python code.
+- **`README.md`** — Developer-facing quick start.
+- **`docs/foundation.md`** — Foundation invariants and versioning rules.
+- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.3.
+- **`main.py`** — Thin entry point.
+- **`ore/cli.py`** — CLI UX, mode dispatch, session lifecycle.
+- **`ore/core.py`** — Orchestration: loop construction, persona injection, session threading.
+- **`ore/reasoner.py`** — Reasoner abstraction and Ollama backend.
+- **`ore/models.py`** — Model discovery and default selection.
+- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`).
+- **`ore/__init__.py`** — Package API surface.
 
 ---
 
 ## How to Extend This Architecture
 
 - **Add a new reasoner backend**
-  - Implement a new subclass of `Reasoner` in `ore/reasoner.py` or a new module.
-  - Provide a `reason(messages: List[Message]) -> Response` implementation using any LLM API or custom logic.
-  - Wire it into the CLI or another entry point by constructing `ORE(NewReasoner(...))`.
+  - Implement a new subclass of `Reasoner`.
+  - Provide `reason(messages: List[Message]) -> Response`.
+  - Wire it in via `ORE(NewReasoner(...))`.
 
-- **Add tools or memory**
-  - Extend `ORE.execute` to:
-    - Maintain a list of `Message` objects across turns.
-    - Insert tool call responses or memory as additional `Message` instances.
-  - Keep `Reasoner` focused on “given messages → model call → Response”.
+- **Add disk-persistent sessions (future version)**
+  - Serialise/deserialise `Session.messages` to/from a file or database.
+  - The `Session` contract is already list-based and serialisation-friendly.
+  - This belongs in the CLI or a new `SessionStore` module — not in `ORE` or `Reasoner`.
+
+- **Add tools (future version)**
+  - Extend `ORE.execute` to inject tool-call messages into the message list.
+  - Keep `Reasoner` focused on "given messages → model call → Response".
 
 - **Add richer CLI commands**
-  - Enhance `ore.cli`:
-    - New flags for multi-turn sessions, streaming, or different personas.
-    - Options for choosing backends (`--backend ollama`, `--backend remote`).
-
+  - New flags for streaming, different personas, or named sessions.
+  - Options for choosing backends (`--backend ollama`, `--backend remote`).

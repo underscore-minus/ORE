@@ -3,10 +3,13 @@ Orchestrator: builds the minimal context loop and delegates to the Reasoner.
 Aya persona is injected here, not in the Reasoner.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Optional
 
 from .reasoner import Reasoner
-from .types import Message, Response
+from .types import Message, Response, Session
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 AYA_PROMPT_PATH = PROMPTS_DIR / "aya.txt"
@@ -29,10 +32,32 @@ class ORE:
         self.reasoner = reasoner
         self.system_prompt = load_aya_system_prompt()
 
-    def execute(self, user_prompt: str) -> Response:
-        # Single turn: system identity + user input only (stateless)
-        messages = [
-            Message(role="system", content=self.system_prompt),
-            Message(role="user", content=user_prompt),
-        ]
-        return self.reasoner.reason(messages)
+    def execute(self, user_prompt: str, session: Optional[Session] = None) -> Response:
+        """
+        Run one turn of the irreducible loop.
+
+        Without a session (default, v0.1/v0.2 behaviour):
+            message list = [system, user]
+
+        With a session (v0.3 cognitive continuity):
+            message list = [system] + session.messages + [user]
+            After the reasoner responds, the user and assistant messages are
+            appended to the session so the next turn sees the full history.
+
+        The session is an explicit argument — there is no hidden state inside ORE.
+        """
+        user_msg = Message(role="user", content=user_prompt)
+
+        messages = [Message(role="system", content=self.system_prompt)]
+        if session is not None:
+            messages += session.messages
+        messages.append(user_msg)
+
+        response = self.reasoner.reason(messages)
+
+        if session is not None:
+            # Append user turn, then assistant turn — order is canonical.
+            session.messages.append(user_msg)
+            session.messages.append(Message(role="assistant", content=response.content))
+
+        return response

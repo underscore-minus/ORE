@@ -12,16 +12,17 @@ git clone https://github.com/underscore-minus/ORE.git && cd ORE
 python3.10 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run (Ollama must be running; pull a model first: ollama pull llama2)
+# Run (Ollama must be running; pull a model first: ollama pull llama3.2)
 python main.py "Explain the concept of an irreducible loop."
 ```
 
 ## Commands
 
 | Command | Description |
-|--------|-------------|
+|---------|-------------|
 | `python main.py "Your question"` | Ask Aya (auto-picks a model) |
-| `python main.py --interactive` or `-i` | Interactive loop (REPL); each turn stateless |
+| `python main.py --interactive` or `-i` | Interactive REPL — each turn stateless (v0.2) |
+| `python main.py --conversational` or `-c` | Conversational REPL — session accumulates across turns (v0.3) |
 | `python main.py --list-models` | List installed Ollama models |
 | `python main.py "Question" --model llama3.2` | Use a specific model |
 
@@ -30,4 +31,4 @@ python main.py "Explain the concept of an irreducible loop."
 - `ore/` — core package (`types`, `reasoner`, `core`, `cli`, `models`)
 - `main.py` — entry point
 
-v0.2 adds an interactive loop; still stateless (no message history, no memory, no tools). Aya’s persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.
+v0.3 adds a conversational loop (`--conversational` / `-c`): prior turns are visible to the reasoner via an explicit `Session`. Without `--conversational`, behaviour is identical to v0.2 (stateless). Aya's persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.

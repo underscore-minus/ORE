@@ -1,4 +1,4 @@
-ORE — Foundation Document (v0.1)
+ORE — Foundation Document (v0.3)
 Purpose
 
 ORE (Orchestrated Reasoning Engine) is a minimal, local-first reasoning engine built around an irreducible interaction loop:
@@ -20,13 +20,15 @@ The response is returned to the user.
 
 No hidden steps, no implicit side effects.
 
-Stateless by default (v0.1)
+Explicit state (v0.3+)
 
-Each execution is a single, isolated turn.
+Each execution is a single turn of the irreducible loop.
 
-No memory, no tools, no persistence.
+State (memory, session history) may exist, but must be passed explicitly.
 
-State may be added only in later versions and must be explicit.
+No implicit accumulation. If a session is present, it is a named, visible argument — not a hidden field on the engine.
+
+Tools and disk persistence remain out of scope until a future version.
 
 Separation of concerns
 
@@ -34,13 +36,13 @@ CLI/UI logic does not reason.
 
 Orchestration does not depend on a specific model backend.
 
-Reasoners do not define personas or UX.
+Reasoners do not define personas, UX, or session logic.
 
 Data-first contracts
 
 All reasoning input/output flows through explicit data structures.
 
-Message and Response are the canonical contracts.
+Message, Response, and Session are the canonical contracts.
 
 No implicit schemas.
 
@@ -50,20 +52,30 @@ v0.1 assumes local execution via Ollama.
 
 Remote backends are an extension, not a replacement.
 
-What Exists in v0.1
+What Exists in v0.3
 Runtime Model
 
-Single-turn execution
+Three execution modes, all sharing the same irreducible loop:
 
-One system message + one user message
+Single-turn (default): system + user → reasoner → response. Stateless.
 
-One response
+Interactive REPL (--interactive / -i): many single turns in one process. Each turn stateless. Unchanged from v0.2.
 
-There is no conversation history.
+Conversational REPL (--conversational / -c): many turns in one process with a shared Session. Each turn: system + session history + user → reasoner → response. The session grows.
+
+Session
+
+Introduced in v0.3. An ordered list of user and assistant messages accumulated across turns.
+
+The system message is never stored in the Session; it is injected by the orchestrator on every turn.
+
+The Session is passed explicitly to ORE.execute(); it is not stored inside ORE.
+
+Without a session, ORE.execute() behaves exactly as in v0.2.
 
 Persona
 
-The system persona (“Aya”) is injected by the orchestrator.
+The system persona ("Aya") is injected by the orchestrator.
 
 Persona is data, not logic.
 
@@ -80,13 +92,14 @@ CLI
 
 ore/cli.py
 Handles arguments, model selection, and stdout/stderr.
-Does not reason.
+Does not reason. Owns session creation for --conversational.
 
 Orchestrator
 
 ore/core.py
 Constructs the message list and invokes a reasoner.
 Enforces the core loop.
+Accepts an optional Session to prepend prior turns.
 
 Reasoner
 
@@ -102,7 +115,7 @@ Discovery and default-selection logic for Ollama models.
 Data Contracts
 
 ore/types.py
-Defines Message and Response.
+Defines Message, Response, and Session.
 
 Reasoner Contract (Critical)
 
@@ -122,7 +135,7 @@ What ORE Is Not (Yet)
 
 Not an agent framework
 
-Not a memory system
+Not a persistent memory system (in-memory only in v0.3)
 
 Not a tool runner
 
@@ -160,11 +173,15 @@ v0.1 is intentionally limited.
 
 New versions add one conceptual dimension at a time (e.g. time, memory, tools).
 
+v0.1 — The loop exists (single-turn, stateless).
+v0.2 — Temporal continuity (interactive REPL, still stateless per turn).
+v0.3 — Cognitive continuity (session history, explicit state).
+
 Guiding Question
 
 When modifying ORE, always ask:
 
-“Does this preserve the irreducible loop, or am I hiding complexity inside it?”
+"Does this preserve the irreducible loop, or am I hiding complexity inside it?"
 
 If complexity is hidden, the change is wrong.
 
