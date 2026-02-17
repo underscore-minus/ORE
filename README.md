@@ -25,6 +25,8 @@ python main.py "Explain the concept of an irreducible loop."
 | `python main.py --conversational` or `-c` | Conversational REPL — session accumulates across turns (v0.3) |
 | `python main.py --list-models` | List installed Ollama models |
 | `python main.py "Question" --model llama3.2` | Use a specific model |
+| `python main.py --stream` or `-s` | Stream output token-by-token (optional, any mode) |
+| `python main.py --verbose` or `-v` | Show response metadata (ID, model, token counts) |
 
 ## Layout
 

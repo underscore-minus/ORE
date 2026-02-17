@@ -16,16 +16,39 @@ from .types import Response, Session
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
 
 
-def _print_response(response: Response) -> None:
+def _print_response(response: Response, verbose: bool = False) -> None:
     """Print a single response to stdout (content + optional metadata)."""
     print(f"\n[AYA]: {response.content}")
-    print(f"\n[Metadata]: ID {response.id} | Model {response.model_id}")
-    if response.metadata:
-        print(f"  Usage: {response.metadata}")
+    if verbose:
+        print(f"\n[Metadata]: ID {response.id} | Model {response.model_id}")
+        if response.metadata:
+            print(f"  Usage: {response.metadata}")
+
+
+def _stream_turn(
+    engine: ORE,
+    prompt: str,
+    session: Session | None,
+    verbose: bool,
+) -> Response:
+    """Drive the streaming generator, print chunks as they arrive, return final Response."""
+    gen = engine.execute_stream(prompt, session=session)
+    print("[AYA]: ", end="", flush=True)
+    try:
+        while True:
+            print(next(gen), end="", flush=True)
+    except StopIteration as exc:
+        response = exc.value
+    print()
+    if verbose:
+        print(f"\n[Metadata]: ID {response.id} | Model {response.model_id}")
+        if response.metadata:
+            print(f"  Usage: {response.metadata}")
+    return response
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.3 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.3.1 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -59,6 +82,18 @@ def run() -> None:
             "Run a conversational loop (REPL with memory); "
             "prior turns are visible to the reasoner each turn (v0.3)"
         ),
+    )
+    parser.add_argument(
+        "--stream",
+        "-s",
+        action="store_true",
+        help="Stream output token-by-token (optional, any mode)",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show response metadata (ID, model, token counts)",
     )
     args = parser.parse_args()
 
@@ -95,7 +130,7 @@ def run() -> None:
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.2 interactive (model: {model_id})")
+        print(f"ORE v0.3.1 interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -106,13 +141,16 @@ def run() -> None:
             if line.lower() in _REPL_EXIT_COMMANDS:
                 break
             print("--- ORE: Reasoning ---")
-            response = engine.execute(line)
-            _print_response(response)
+            if args.stream:
+                _stream_turn(engine, line, None, args.verbose)
+            else:
+                response = engine.execute(line)
+                _print_response(response, verbose=args.verbose)
             print()
 
     elif args.conversational:
         session = Session()
-        print(f"ORE v0.3 conversational (model: {model_id} | session: {session.id})")
+        print(f"ORE v0.3.1 conversational (model: {model_id} | session: {session.id})")
         print("Prior turns are visible to the reasoner. Type quit or exit to leave.\n")
         while True:
             try:
@@ -123,11 +161,17 @@ def run() -> None:
             if line.lower() in _REPL_EXIT_COMMANDS:
                 break
             print("--- ORE: Reasoning ---")
-            response = engine.execute(line, session=session)
-            _print_response(response)
+            if args.stream:
+                _stream_turn(engine, line, session, args.verbose)
+            else:
+                response = engine.execute(line, session=session)
+                _print_response(response, verbose=args.verbose)
             print()
 
     else:
-        print("--- ORE v0.3: Reasoning ---")
-        response = engine.execute(args.prompt)
-        _print_response(response)
+        print("--- ORE v0.3.1: Reasoning ---")
+        if args.stream:
+            _stream_turn(engine, args.prompt, None, args.verbose)
+        else:
+            response = engine.execute(args.prompt)
+            _print_response(response, verbose=args.verbose)

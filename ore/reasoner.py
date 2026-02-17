@@ -3,7 +3,7 @@ Reasoner interface and Aya default implementation using Ollama (local LLM).
 """
 
 from abc import ABC, abstractmethod
-from typing import List
+from typing import Generator, List
 
 from ollama import Client
 
@@ -17,6 +17,12 @@ class Reasoner(ABC):
     def reason(self, messages: List[Message]) -> Response:
         """Produce a single response from the given message list."""
         ...
+
+    def stream_reason(self, messages: List[Message]) -> Generator[str, None, Response]:
+        """Streaming mode. Default: emits full content in one chunk via reason()."""
+        response = self.reason(messages)
+        yield response.content
+        return response
 
 
 class AyaReasoner(Reasoner):
@@ -50,6 +56,33 @@ class AyaReasoner(Reasoner):
 
         return Response(
             content=content,
+            model_id=self.model_id,
+            metadata=metadata,
+        )
+
+    def stream_reason(self, messages: List[Message]) -> Generator[str, None, Response]:
+        payload = [{"role": m.role, "content": m.content} for m in messages]
+        full_content: list[str] = []
+        metadata: dict = {}
+        for chunk in self._client.chat(
+            model=self.model_id, messages=payload, stream=True
+        ):
+            msg = getattr(chunk, "message", None)
+            text = (getattr(msg, "content", None) or "") if msg else ""
+            if text:
+                full_content.append(text)
+                yield text
+            for key in (
+                "eval_count",
+                "prompt_eval_count",
+                "eval_duration",
+                "prompt_eval_duration",
+            ):
+                val = getattr(chunk, key, None)
+                if val is not None:
+                    metadata[key] = val
+        return Response(
+            content="".join(full_content),
             model_id=self.model_id,
             metadata=metadata,
         )

@@ -1,5 +1,5 @@
 """
-ORE: Orchestrated Reasoning Engine v0.3.
+ORE: Orchestrated Reasoning Engine v0.3.1.
 Irreducible loop: Input -> Reasoner -> Output.
 """
 

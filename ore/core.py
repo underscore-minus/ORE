@@ -6,7 +6,7 @@ Aya persona is injected here, not in the Reasoner.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Generator, Optional
 
 from .reasoner import Reasoner
 from .types import Message, Response, Session
@@ -59,5 +59,29 @@ class ORE:
             # Append user turn, then assistant turn — order is canonical.
             session.messages.append(user_msg)
             session.messages.append(Message(role="assistant", content=response.content))
+
+        return response
+
+    def execute_stream(
+        self, user_prompt: str, session: Optional[Session] = None
+    ) -> Generator[str, None, Response]:
+        """
+        Streaming variant: yields str chunks. Session is updated after exhaustion.
+        The final StopIteration carries the Response.
+        """
+        user_msg = Message(role="user", content=user_prompt)
+
+        messages = [Message(role="system", content=self.system_prompt)]
+        if session is not None:
+            messages += session.messages
+        messages.append(user_msg)
+
+        response = yield from self.reasoner.stream_reason(messages)
+
+        if session is not None:
+            session.messages.append(user_msg)
+            session.messages.append(
+                Message(role="assistant", content=response.content)
+            )
 
         return response
