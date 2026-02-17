@@ -29,4 +29,4 @@ python main.py "Explain the concept of an irreducible loop."
 - `ore/` — core package (`types`, `reasoner`, `core`, `cli`, `models`)
 - `main.py` — entry point
 
-v0.1.1 is stateless: one turn, no memory, no tools. Aya’s persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.
+v0.1.2 is stateless: one turn, no memory, no tools. Aya’s persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.

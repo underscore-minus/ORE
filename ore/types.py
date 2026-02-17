@@ -1,10 +1,10 @@
 """
-Core data contracts for ORE v0.1.
+Core data contracts for ORE v0.1.2.
 List-first schema to support future context windows and memory.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import time
 import uuid

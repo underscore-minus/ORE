@@ -1,6 +1,6 @@
-# ORE Architecture (v0.1.1)
+# ORE Architecture (v0.1.2)
 
-**Version**: v0.1.1 (stateless, single-turn)  
+**Version**: v0.1.2 (stateless, single-turn)  
 **Language**: Python 3.10 (PEP 8, `black`-formatted)  
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -145,7 +145,7 @@
     - Represents any message in a conversation (`"system"`, `"user"`, or `"assistant"`).
   - `Response` dataclass:
     - Fields: `content`, `model_id`, auto-generated `id`, `timestamp`, `metadata`.
-    - `metadata` is **diagnostic and unstable** in v0.1.1: it may include token usage, latencies, or backend-specific fields, and its exact schema may change between versions.
+    - `metadata` is **diagnostic and unstable** in v0.1.2: it may include token usage, latencies, or backend-specific fields, and its exact schema may change between versions.
 - **Why it exists**:
   - Provides a stable schema that can evolve toward richer conversational histories and memory.
   - Keeps type hints and structure explicit for easier maintenance and refactoring.
@@ -189,13 +189,13 @@
 
 - **`README.md`**
   - Developer-facing quick start: cloning, environment setup, and example commands.
-  - Explains layout and v0.1.1 limitations (stateless, no tools, one-turn).
+  - Explains layout and v0.1.2 limitations (stateless, no tools, one-turn).
 
 - **`docs/foundation.md`**
   - Foundation and invariants for ORE (irreducible loop, stateless v0.1.x, separation of concerns, versioning rules).
 
 - **`docs/architecture.md` (this file)**
-  - High-level architectural overview for v0.1.1.
+  - High-level architectural overview for v0.1.2.
   - Describes modules, data contracts, and external dependencies.
   - Clarifies that response metadata is diagnostic and unstable.
 

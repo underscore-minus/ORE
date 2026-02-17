@@ -11,7 +11,7 @@ from .reasoner import AyaReasoner
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.1 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.1.2 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -57,7 +57,7 @@ def run() -> None:
 
     engine = ORE(AyaReasoner(model_id=model_id))
 
-    print("--- ORE v0.1: Reasoning ---")
+    print("--- ORE v0.1.2: Reasoning ---")
     response = engine.execute(args.prompt)
 
     print(f"\n[AYA]: {response.content}")
