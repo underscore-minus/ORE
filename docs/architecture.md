@@ -1,6 +1,6 @@
-# ORE Architecture (v0.1.2)
+# ORE Architecture (v0.2)
 
-**Version**: v0.1.2 (stateless, single-turn)  
+**Version**: v0.2 (stateless; single-turn or interactive REPL)  
 **Language**: Python 3.10 (PEP 8, `black`-formatted)  
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -12,10 +12,11 @@
   - **User command** → `python main.py "prompt"` (or CLI options).
   - **`main.py`** loads environment (`.env` via `python-dotenv`) and delegates to CLI.
   - **`ore.cli`**:
-    - Parses CLI arguments.
+    - Parses CLI arguments (including `--interactive` / `-i` for REPL mode).
     - Optionally lists available Ollama models.
     - Chooses a model (explicit `--model` or auto-selected default).
     - Instantiates the orchestrator `ORE` with an `AyaReasoner`.
+    - Either runs a single turn (prompt on command line) or an interactive loop; each turn calls `engine.execute(prompt)` once — no message history.
     - Prints the assistant output and metadata to stdout.
   - **`ore.core.ORE`**:
     - Loads Aya’s **system persona** from `ore/prompts/aya.txt`.
@@ -65,21 +66,22 @@
 - **Role**: **CLI layer** — argument parsing and user interaction via stdout/stderr.
 - **Key responsibilities**:
   - Build an `argparse.ArgumentParser` with:
-    - Positional `prompt` (optional when `--list-models` is used).
+    - Positional `prompt` (optional when `--list-models` or `--interactive` is used).
     - Optional `--model NAME` flag to select a specific Ollama model.
     - `--list-models` flag to list all locally available Ollama models and exit.
+    - `--interactive` / `-i` flag to run an interactive loop (REPL); each turn is stateless, no history.
   - Execute **model listing**:
     - Call `fetch_models()` to inspect Ollama.
     - Handle “no models installed” by printing guidance and exiting with non-zero status.
-  - Execute **reasoning run**:
-    - Validate that `prompt` is present when not listing models.
+  - Execute **reasoning run** (single-turn or interactive):
+    - Validate that `prompt` is present when not listing models and not using `--interactive`.
     - Determine `model_id`:
       - Use explicit `--model`, or
       - Use `default_model()` to auto-select from preferred models (`llama3.2`, `llama3.1`, `llama3`, `mistral`, `llama2`, `qwen2.5`) or first available.
     - Instantiate `ORE(AyaReasoner(model_id=model_id))`.
-    - Call `engine.execute(prompt)` and print:
-      - `[AYA]:` response content.
-      - `[Metadata]:` response ID, model ID, and optional diagnostic metadata.
+    - **Single-turn**: call `engine.execute(prompt)` once and print response.
+    - **Interactive (`-i`)**: loop reading user input; for each line (until `quit`/`exit` or EOF), call `engine.execute(line)` and print response; no message history between turns.
+    - Print for each response: `[AYA]:` content and `[Metadata]:` ID, model ID, optional diagnostic metadata.
 - **Why it exists**:
   - Cleanly separates *how* users run ORE (CLI UX) from *how* reasoning is performed.
 
@@ -145,7 +147,7 @@
     - Represents any message in a conversation (`"system"`, `"user"`, or `"assistant"`).
   - `Response` dataclass:
     - Fields: `content`, `model_id`, auto-generated `id`, `timestamp`, `metadata`.
-    - `metadata` is **diagnostic and unstable** in v0.1.2: it may include token usage, latencies, or backend-specific fields, and its exact schema may change between versions.
+    - `metadata` is **diagnostic and unstable** in v0.2: it may include token usage, latencies, or backend-specific fields, and its exact schema may change between versions.
 - **Why it exists**:
   - Provides a stable schema that can evolve toward richer conversational histories and memory.
   - Keeps type hints and structure explicit for easier maintenance and refactoring.
@@ -189,13 +191,13 @@
 
 - **`README.md`**
   - Developer-facing quick start: cloning, environment setup, and example commands.
-  - Explains layout and v0.1.2 limitations (stateless, no tools, one-turn).
+  - Explains layout and v0.2 limitations (stateless, no tools, one-turn).
 
 - **`docs/foundation.md`**
   - Foundation and invariants for ORE (irreducible loop, stateless v0.1.x, separation of concerns, versioning rules).
 
 - **`docs/architecture.md` (this file)**
-  - High-level architectural overview for v0.1.2.
+  - High-level architectural overview for v0.2.
   - Describes modules, data contracts, and external dependencies.
   - Clarifies that response metadata is diagnostic and unstable.
 

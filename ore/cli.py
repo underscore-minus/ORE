@@ -1,5 +1,6 @@
 """
 CLI layer: argument parsing and printing the reasoning output.
+v0.2 adds an interactive loop (REPL); each turn remains stateless.
 """
 
 import argparse
@@ -8,16 +9,28 @@ import sys
 from .core import ORE
 from .models import default_model, fetch_models
 from .reasoner import AyaReasoner
+from .types import Response
+
+# Commands that exit the interactive loop (case-insensitive)
+_REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
+
+
+def _print_response(response: Response) -> None:
+    """Print a single response to stdout (content + optional metadata)."""
+    print(f"\n[AYA]: {response.content}")
+    print(f"\n[Metadata]: ID {response.id} | Model {response.model_id}")
+    if response.metadata:
+        print(f"  Usage: {response.metadata}")
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.1.2 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.2 CLI")
     parser.add_argument(
         "prompt",
         type=str,
         nargs="?",
         default=None,
-        help="User input for Aya (omit when using --list-models)",
+        help="User input for Aya (omit when using --list-models or --interactive)",
     )
     parser.add_argument(
         "--model",
@@ -31,6 +44,12 @@ def run() -> None:
         action="store_true",
         help="List available Ollama models and exit",
     )
+    parser.add_argument(
+        "--interactive",
+        "-i",
+        action="store_true",
+        help="Run an interactive loop (REPL); each turn is stateless, no history",
+    )
     args = parser.parse_args()
 
     if args.list_models:
@@ -43,8 +62,9 @@ def run() -> None:
             print(f"  {name}")
         sys.exit(0)
 
-    if args.prompt is None:
-        parser.error("prompt is required (or use --list-models)")
+    # Single-turn mode requires a prompt; interactive does not
+    if not args.interactive and args.prompt is None:
+        parser.error("prompt is required (or use --list-models or --interactive)")
 
     model_id = args.model
     if model_id is None:
@@ -52,15 +72,27 @@ def run() -> None:
         if not model_id:
             print("No Ollama models found. Install one with e.g. ollama pull llama3.2")
             sys.exit(1)
-        # Show which model we're using when auto-selected
-        print(f"Using model: {model_id}\n")
+        if not args.interactive:
+            print(f"Using model: {model_id}\n")
 
     engine = ORE(AyaReasoner(model_id=model_id))
 
-    print("--- ORE v0.1.2: Reasoning ---")
-    response = engine.execute(args.prompt)
-
-    print(f"\n[AYA]: {response.content}")
-    print(f"\n[Metadata]: ID {response.id} | Model {response.model_id}")
-    if response.metadata:
-        print(f"  Usage: {response.metadata}")
+    if args.interactive:
+        print(f"ORE v0.2 interactive (model: {model_id})")
+        print("Each turn is stateless. Type quit or exit to leave.\n")
+        while True:
+            try:
+                line = input("You: ").strip()
+            except EOFError:
+                print()
+                break
+            if line.lower() in _REPL_EXIT_COMMANDS:
+                break
+            print("--- ORE: Reasoning ---")
+            response = engine.execute(line)
+            _print_response(response)
+            print()
+    else:
+        print("--- ORE v0.2: Reasoning ---")
+        response = engine.execute(args.prompt)
+        _print_response(response)

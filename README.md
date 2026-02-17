@@ -21,6 +21,7 @@ python main.py "Explain the concept of an irreducible loop."
 | Command | Description |
 |--------|-------------|
 | `python main.py "Your question"` | Ask Aya (auto-picks a model) |
+| `python main.py --interactive` or `-i` | Interactive loop (REPL); each turn stateless |
 | `python main.py --list-models` | List installed Ollama models |
 | `python main.py "Question" --model llama3.2` | Use a specific model |
 
@@ -29,4 +30,4 @@ python main.py "Explain the concept of an irreducible loop."
 - `ore/` — core package (`types`, `reasoner`, `core`, `cli`, `models`)
 - `main.py` — entry point
 
-v0.1.2 is stateless: one turn, no memory, no tools. Aya’s persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.
+v0.2 adds an interactive loop; still stateless (no message history, no memory, no tools). Aya’s persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.
