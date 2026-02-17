@@ -22,7 +22,15 @@ class Message:
 
 @dataclass
 class Response:
-    """Reasoner output with content, model id, and optional metadata (tokens, latency)."""
+    """
+    Reasoner output for a single turn.
+
+    Notes for v0.1.1:
+    - `metadata` is **diagnostic and unstable**: it may include token counts,
+      latencies, or backend-specific fields, and its exact schema can change
+      between versions.
+    - Callers must not depend on specific metadata keys for core behavior.
+    """
 
     content: str
     model_id: str
