@@ -21,8 +21,10 @@ python main.py "Explain the concept of an irreducible loop."
 | Command | Description |
 |---------|-------------|
 | `python main.py "Your question"` | Ask Aya (auto-picks a model) |
-| `python main.py --interactive` or `-i` | Interactive REPL — each turn stateless (v0.2) |
-| `python main.py --conversational` or `-c` | Conversational REPL — session accumulates across turns (v0.3) |
+| `python main.py --interactive` or `-i` | Interactive REPL — each turn stateless |
+| `python main.py --conversational` or `-c` | Conversational REPL — session in memory across turns |
+| `python main.py --save-session NAME` | Conversational REPL, persist to ~/.ore/sessions/ after each turn |
+| `python main.py --resume-session NAME` | Resume a saved session (implies conversational) |
 | `python main.py --list-models` | List installed Ollama models |
 | `python main.py "Question" --model llama3.2` | Use a specific model |
 | `python main.py --stream` or `-s` | Stream output token-by-token (optional, any mode) |
@@ -30,7 +32,7 @@ python main.py "Explain the concept of an irreducible loop."
 
 ## Layout
 
-- `ore/` — core package (`types`, `reasoner`, `core`, `cli`, `models`)
+- `ore/` — core package (`types`, `reasoner`, `core`, `cli`, `models`, `store`)
 - `main.py` — entry point
 
-v0.3 adds a conversational loop (`--conversational` / `-c`): prior turns are visible to the reasoner via an explicit `Session`. Without `--conversational`, behaviour is identical to v0.2 (stateless). Aya's persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.
+`--conversational` / `-c` enables a session-aware REPL; prior turns are visible to the reasoner via an explicit `Session`. `--save-session` and `--resume-session` (v0.4) add opt-in persistence to `~/.ore/sessions/`. Without these flags, behaviour is stateless. Aya's persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.

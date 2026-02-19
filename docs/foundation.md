@@ -1,4 +1,4 @@
-ORE — Foundation Document (v0.3)
+ORE — Foundation Document (v0.4)
 Purpose
 
 ORE (Orchestrated Reasoning Engine) is a minimal, local-first reasoning engine built around an irreducible interaction loop:
@@ -28,7 +28,7 @@ State (memory, session history) may exist, but must be passed explicitly.
 
 No implicit accumulation. If a session is present, it is a named, visible argument — not a hidden field on the engine.
 
-Tools and disk persistence remain out of scope until a future version.
+Tools remain out of scope. Session persistence (v0.4) is opt-in via `--save-session` / `--resume-session`; without these flags, behaviour is unchanged.
 
 Separation of concerns
 
@@ -52,7 +52,7 @@ v0.1 assumes local execution via Ollama.
 
 Remote backends are an extension, not a replacement.
 
-What Exists in v0.3
+What Exists in v0.4
 Runtime Model
 
 Three execution modes, all sharing the same irreducible loop:
@@ -62,6 +62,8 @@ Single-turn (default): system + user → reasoner → response. Stateless.
 Interactive REPL (--interactive / -i): many single turns in one process. Each turn stateless. Unchanged from v0.2.
 
 Conversational REPL (--conversational / -c): many turns in one process with a shared Session. Each turn: system + session history + user → reasoner → response. The session grows.
+
+Persistent sessions (--save-session NAME / --resume-session NAME): opt-in file-based persistence in ~/.ore/sessions/. Both imply conversational mode. Sessions saved eagerly after each turn.
 
 Session
 
@@ -92,7 +94,7 @@ CLI
 
 ore/cli.py
 Handles arguments, model selection, and stdout/stderr.
-Does not reason. Owns session creation for --conversational.
+Does not reason. Owns session creation for --conversational and persistence for --save-session / --resume-session.
 
 Orchestrator
 
@@ -117,6 +119,9 @@ Data Contracts
 ore/types.py
 Defines Message, Response, and Session.
 
+ore/store.py
+SessionStore abstraction and FileSessionStore for opt-in persistence.
+
 Reasoner Contract (Critical)
 
 Any reasoner must:
@@ -135,7 +140,7 @@ What ORE Is Not (Yet)
 
 Not an agent framework
 
-Not a persistent memory system (in-memory only in v0.3)
+Not a persistent memory system (opt-in session persistence in v0.4; default remains in-memory)
 
 Not a tool runner
 
@@ -176,6 +181,7 @@ New versions add one conceptual dimension at a time (e.g. time, memory, tools).
 v0.1 — The loop exists (single-turn, stateless).
 v0.2 — Temporal continuity (interactive REPL, still stateless per turn).
 v0.3 — Cognitive continuity (session history, explicit state).
+v0.4 — Persistent sessions (opt-in, file-based; CLI flags only; core unchanged).
 
 Guiding Question
 

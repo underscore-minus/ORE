@@ -1,6 +1,6 @@
-# ORE Architecture (v0.3.1)
+# ORE Architecture (v0.4)
 
-**Version**: v0.3.1 (QoL: optional streaming and metadata toggle)
+**Version**: v0.4 (Persistent sessions)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -13,10 +13,13 @@ ORE v0.3 supports three modes, all sharing the same loop:
 | Mode | Flag | Session | History visible to reasoner |
 |------|------|---------|----------------------------|
 | Single-turn | _(none)_ | None | No |
-| Interactive REPL | `--interactive` / `-i` | None | No (unchanged from v0.2) |
+| Interactive REPL | `--interactive` / `-i` | None | No |
 | Conversational REPL | `--conversational` / `-c` | `Session` | Yes |
+| Conversational (persisted) | `--save-session` / `--resume-session` | `Session` | Yes (implies `-c`) |
 
-**Orthogonal flags (v0.3.1):** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden.
+**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden.
+
+**Mode precedence:** If `--save-session` or `--resume-session` is present → conversational. Else if `-c` → conversational. Else → stateless.
 
 **Interactive ≠ Conversational.** Interactive mode (v0.2) is a REPL where turns are isolated. Conversational mode (v0.3) is a REPL where turns accumulate in an explicit `Session`. The distinction is versioned and locked.
 
@@ -91,6 +94,7 @@ Any change that adds implicit history (storing state inside `ORE` without passin
   - `ORE` (orchestrator engine).
   - `Reasoner`, `AyaReasoner` (reasoner abstraction + default implementation).
   - `Message`, `Response`, `Session` (data contracts).
+  - `SessionStore`, `FileSessionStore` (session persistence).
   - `fetch_models`, `default_model` (Ollama model utilities).
 
 ### `ore/cli.py`
@@ -101,12 +105,14 @@ Any change that adds implicit history (storing state inside `ORE` without passin
     - Positional `prompt` (optional in REPL modes).
     - Optional `--model NAME` flag.
     - `--list-models` flag to list Ollama models and exit.
-    - `--interactive` / `-i` flag — v0.2 stateless REPL.
-    - `--conversational` / `-c` flag — v0.3 session-aware REPL.
-    - `--stream` / `-s` flag — stream output token-by-token (v0.3.1).
-    - `--verbose` / `-v` flag — show metadata (default: hidden) (v0.3.1).
-  - Enforce mutual exclusivity of `--interactive` and `--conversational`.
-  - For `--conversational`: create a `Session()` before the loop and pass it to `engine.execute()` each turn.
+    - `--interactive` / `-i` flag — stateless REPL.
+    - `--conversational` / `-c` flag — session-aware REPL (in-memory).
+    - `--save-session NAME` — persist session to ~/.ore/sessions/ (implies `-c`).
+    - `--resume-session NAME` — load session from disk (implies `-c`).
+    - `--stream` / `-s` flag — stream output token-by-token.
+    - `--verbose` / `-v` flag — show metadata (default: hidden).
+  - Enforce mutual exclusivity of `--interactive` with `--conversational`, `--save-session`, and `--resume-session`.
+  - For conversational mode: create or load a `Session`, pass it to `engine.execute()` each turn, save eagerly if `--save-session` set.
   - Print per-response: `[AYA]:` content; `[Metadata]:` only when `--verbose`.
   - When `--stream`: drive `engine.execute_stream()`, print chunks as they arrive, update session after exhaustion.
 - **Why it exists**:
@@ -183,6 +189,58 @@ Custom reasoner backends may omit all keys or add their own; the above four are 
 
 ---
 
+## Session persistence (v0.4)
+
+Persistence is **opt-in** and lives entirely outside `ORE` and `Reasoner`. The CLI owns load/save; the engine receives `Session` as an explicit argument and knows nothing about files.
+
+### SessionStore abstraction
+
+- **`SessionStore`** (abstract base class):
+  - `save(session: Session, name: str) -> None`
+  - `load(name: str) -> Session`
+  - `list() -> list[str]`
+
+- **`FileSessionStore`** (default implementation):
+  - Root: `~/.ore/sessions/`
+  - One JSON file per session: `<name>.json`
+  - Full message history, no summarization
+  - Human-readable and inspectable
+
+### CLI flags
+
+- `--save-session <name>` — persist session after each turn (implies `-c`)
+- `--resume-session <name>` — load session from disk (implies `-c`)
+- Both imply conversational mode; neither may be used with `--interactive`
+
+### Save semantics
+
+**Sessions are saved eagerly after each successful turn.** No background flushing, batching, or lazy writes. Any future change (lazy saves, checkpoints, save-on-exit-only) would be an intentional, versioned change — not silent drift.
+
+### Name vs. ID distinction
+
+The session **name** (CLI flag, filename) is a user-facing handle. `Session.id` is an immutable UUID identity assigned at creation. Renaming a file does not change the session's identity. This separation supports future operations: rename, fork, merge, audit.
+
+### JSON format
+
+```json
+{
+  "id": "uuid-string",
+  "created_at": 1234567890.123,
+  "messages": [
+    {"role": "user", "content": "...", "id": "uuid", "timestamp": 1234567890.123},
+    {"role": "assistant", "content": "...", "id": "uuid", "timestamp": 1234567890.123}
+  ]
+}
+```
+
+### Edge behaviour
+
+- Deleting `~/.ore/sessions/` breaks nothing; the next save recreates it
+- `--resume-session foo` where `foo.json` does not exist → clear error, exit
+- No auto-save, no default session, no persistence baked into `Session` itself
+
+---
+
 ## External Dependencies and Requirements
 
 ### Python and environment
@@ -212,6 +270,7 @@ Custom reasoner backends may omit all keys or add their own; the above four are 
 - **`ore/reasoner.py`** — Reasoner abstraction and Ollama backend.
 - **`ore/models.py`** — Model discovery and default selection.
 - **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`).
+- **`ore/store.py`** — Session persistence (`SessionStore`, `FileSessionStore`).
 - **`ore/__init__.py`** — Package API surface.
 
 ---
@@ -223,10 +282,8 @@ Custom reasoner backends may omit all keys or add their own; the above four are 
   - Provide `reason(messages: List[Message]) -> Response`.
   - Wire it in via `ORE(NewReasoner(...))`.
 
-- **Add disk-persistent sessions (future version)**
-  - Serialise/deserialise `Session.messages` to/from a file or database.
-  - The `Session` contract is already list-based and serialisation-friendly.
-  - This belongs in the CLI or a new `SessionStore` module — not in `ORE` or `Reasoner`.
+- **Session persistence (v0.4 — implemented)**
+  - See the *Session persistence* section below.
 
 - **Add tools (future version)**
   - Extend `ORE.execute` to inject tool-call messages into the message list.

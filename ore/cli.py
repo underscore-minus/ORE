@@ -10,6 +10,7 @@ import sys
 from .core import ORE
 from .models import default_model, fetch_models
 from .reasoner import AyaReasoner
+from .store import FileSessionStore
 from .types import Response, Session
 
 # Commands that exit any REPL mode (case-insensitive)
@@ -48,7 +49,7 @@ def _stream_turn(
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.3.1 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.4 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -80,8 +81,22 @@ def run() -> None:
         action="store_true",
         help=(
             "Run a conversational loop (REPL with memory); "
-            "prior turns are visible to the reasoner each turn (v0.3)"
+            "prior turns are visible to the reasoner each turn"
         ),
+    )
+    parser.add_argument(
+        "--save-session",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="Save session to ~/.ore/sessions/ after each turn (implies -c)",
+    )
+    parser.add_argument(
+        "--resume-session",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="Resume session from ~/.ore/sessions/ (implies -c)",
     )
     parser.add_argument(
         "--stream",
@@ -99,6 +114,8 @@ def run() -> None:
 
     if args.interactive and args.conversational:
         parser.error("--interactive and --conversational are mutually exclusive")
+    if args.interactive and (args.save_session or args.resume_session):
+        parser.error("--interactive cannot be used with --save-session or --resume-session")
 
     if args.list_models:
         models = fetch_models()
@@ -110,7 +127,9 @@ def run() -> None:
             print(f"  {name}")
         sys.exit(0)
 
-    _repl_mode = args.interactive or args.conversational
+    # Mode precedence: save/resume → conversational; -c → conversational; else stateless
+    _conversational = args.save_session or args.resume_session or args.conversational
+    _repl_mode = args.interactive or _conversational
 
     # Single-turn mode requires a prompt; REPL modes do not
     if not _repl_mode and args.prompt is None:
@@ -130,7 +149,7 @@ def run() -> None:
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.3.1 interactive (model: {model_id})")
+        print(f"ORE v0.4 interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -148,28 +167,47 @@ def run() -> None:
                 _print_response(response, verbose=args.verbose)
             print()
 
-    elif args.conversational:
-        session = Session()
-        print(f"ORE v0.3.1 conversational (model: {model_id} | session: {session.id})")
-        print("Prior turns are visible to the reasoner. Type quit or exit to leave.\n")
-        while True:
+    elif _conversational:
+        store = FileSessionStore()
+        if args.resume_session:
             try:
-                line = input("You: ").strip()
-            except EOFError:
+                session = store.load(args.resume_session)
+            except FileNotFoundError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
+        else:
+            session = Session()
+        save_name = args.save_session
+        print(f"ORE v0.4 conversational (model: {model_id} | session: {session.id})")
+        if args.resume_session:
+            print(f"  Resumed: {args.resume_session}")
+        if save_name:
+            print(f"  Saving to: {save_name}")
+        print("Prior turns are visible to the reasoner. Type quit or exit to leave.\n")
+        try:
+            while True:
+                try:
+                    line = input("You: ").strip()
+                except EOFError:
+                    print()
+                    break
+                if line.lower() in _REPL_EXIT_COMMANDS:
+                    break
+                print("--- ORE: Reasoning ---")
+                if args.stream:
+                    _stream_turn(engine, line, session, args.verbose)
+                else:
+                    response = engine.execute(line, session=session)
+                    _print_response(response, verbose=args.verbose)
+                if save_name:
+                    store.save(session, save_name)
                 print()
-                break
-            if line.lower() in _REPL_EXIT_COMMANDS:
-                break
-            print("--- ORE: Reasoning ---")
-            if args.stream:
-                _stream_turn(engine, line, session, args.verbose)
-            else:
-                response = engine.execute(line, session=session)
-                _print_response(response, verbose=args.verbose)
-            print()
+        finally:
+            if save_name:
+                store.save(session, save_name)
 
     else:
-        print("--- ORE v0.3.1: Reasoning ---")
+        print("--- ORE v0.4: Reasoning ---")
         if args.stream:
             _stream_turn(engine, args.prompt, None, args.verbose)
         else:
