@@ -88,9 +88,5 @@ class FileSessionStore(SessionStore):
         """Return sorted session names (stripped of .json suffix)."""
         if not self._root.exists():
             return []
-        names = [
-            p.stem
-            for p in self._root.glob("*.json")
-            if p.is_file()
-        ]
+        names = [p.stem for p in self._root.glob("*.json") if p.is_file()]
         return sorted(names)

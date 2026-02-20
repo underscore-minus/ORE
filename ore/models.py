@@ -6,7 +6,6 @@ from typing import List
 
 from ollama import Client
 
-
 # Preferred base names (no tag) in order when auto-choosing a default
 PREFERRED_MODELS = ("llama3.2", "llama3.1", "llama3", "mistral", "llama2", "qwen2.5")
 

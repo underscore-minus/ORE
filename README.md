@@ -33,6 +33,20 @@ python main.py "Explain the concept of an irreducible loop."
 ## Layout
 
 - `ore/` — core package (`types`, `reasoner`, `core`, `cli`, `models`, `store`)
+- `tests/` — pytest suite (types, store, core, cli, reasoner, models)
 - `main.py` — entry point
+- `requirements.txt` — runtime deps; `requirements-dev.txt` — dev deps (pytest, black)
+
+## Testing and CI
+
+```bash
+pip install -r requirements-dev.txt
+pytest -v
+black --check .   # enforce formatting
+```
+
+CI runs on push/PR to `main`: Python 3.10, `black --check`, then `pytest`. See `.github/workflows/ci.yml`.
+
+---
 
 `--conversational` / `-c` enables a session-aware REPL; prior turns are visible to the reasoner via an explicit `Session`. `--save-session` and `--resume-session` (v0.4) add opt-in persistence to `~/.ore/sessions/`. Without these flags, behaviour is stateless. Aya's persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.

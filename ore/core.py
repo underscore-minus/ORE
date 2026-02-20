@@ -19,7 +19,9 @@ def load_aya_system_prompt() -> str:
     """Load Aya's system persona from the external prompt file."""
     try:
         return AYA_PROMPT_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:  # High-level: fail fast if contract file is missing.
+    except (
+        FileNotFoundError
+    ) as exc:  # High-level: fail fast if contract file is missing.
         msg = f"Aya system prompt not found at {AYA_PROMPT_PATH}"
         raise RuntimeError(msg) from exc
 
@@ -80,8 +82,6 @@ class ORE:
 
         if session is not None:
             session.messages.append(user_msg)
-            session.messages.append(
-                Message(role="assistant", content=response.content)
-            )
+            session.messages.append(Message(role="assistant", content=response.content))
 
         return response

@@ -115,7 +115,9 @@ def run() -> None:
     if args.interactive and args.conversational:
         parser.error("--interactive and --conversational are mutually exclusive")
     if args.interactive and (args.save_session or args.resume_session):
-        parser.error("--interactive cannot be used with --save-session or --resume-session")
+        parser.error(
+            "--interactive cannot be used with --save-session or --resume-session"
+        )
 
     if args.list_models:
         models = fetch_models()

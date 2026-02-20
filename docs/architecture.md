@@ -253,17 +253,23 @@ The session **name** (CLI flag, filename) is a user-facing handle. `Session.id` 
 - **`ollama>=0.3.0`** — Python client for the local Ollama server.
 - **`python-dotenv>=1.0.0`** — Loads `.env` environment variables.
 
-### Dev/tooling dependencies
+### Dev/tooling dependencies (`requirements-dev.txt`)
 
+- **`pytest`** — test runner.
+- **`pytest-cov`** — optional coverage reporting.
 - **`black`** — code formatting (PEP 8).
+
+Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main`: `black --check` then `pytest`.
 
 ---
 
 ## Component Purposes at a Glance
 
-- **`README.md`** — Developer-facing quick start.
+- **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
 - **`docs/architecture.md`** (this file) — High-level architectural overview for v0.3.1.
+- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models); no live Ollama required.
+- **`.github/workflows/ci.yml`** — CI: Python 3.10, black check, pytest.
 - **`main.py`** — Thin entry point.
 - **`ore/cli.py`** — CLI UX, mode dispatch, session lifecycle.
 - **`ore/core.py`** — Orchestration: loop construction, persona injection, session threading.
