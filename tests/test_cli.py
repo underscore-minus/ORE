@@ -88,24 +88,28 @@ class TestModeValidation:
     """Test the mutual-exclusivity rules enforced by cli.run()."""
 
     @pytest.mark.invariant
-    def test_interactive_and_conversational_rejected(self):
+    def test_interactive_and_conversational_rejected(self, capsys):
         """run() should exit when both -i and -c are given."""
         with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "-c"]):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "interactive" in err.lower() and "conversational" in err.lower()
 
     @pytest.mark.invariant
-    def test_interactive_with_save_session_rejected(self):
+    def test_interactive_with_save_session_rejected(self, capsys):
         with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "--save-session", "x"]):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "interactive" in err.lower() and "save-session" in err.lower()
 
     @pytest.mark.invariant
-    def test_interactive_with_resume_session_rejected(self):
+    def test_interactive_with_resume_session_rejected(self, capsys):
         with patch(
             "ore.cli.argparse._sys.argv", ["ore", "-i", "--resume-session", "x"]
         ):
@@ -113,8 +117,10 @@ class TestModeValidation:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "interactive" in err.lower() and "resume-session" in err.lower()
 
-    def test_no_prompt_no_mode_rejected(self):
+    def test_no_prompt_no_mode_rejected(self, capsys):
         # TTY with no prompt → parser.error; avoid stdin read path
         with patch("ore.cli.argparse._sys.argv", ["ore"]):
             with patch("ore.cli.sys.stdin.isatty", return_value=True):
@@ -122,9 +128,11 @@ class TestModeValidation:
                     from ore.cli import run
 
                     run()
+        err = capsys.readouterr().err
+        assert "prompt" in err.lower()
 
     @pytest.mark.invariant
-    def test_json_and_stream_rejected(self):
+    def test_json_and_stream_rejected(self, capsys):
         with patch(
             "ore.cli.argparse._sys.argv", ["ore", "hello", "--json", "--stream"]
         ):
@@ -132,25 +140,31 @@ class TestModeValidation:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "json" in err.lower() and "stream" in err.lower()
 
     @pytest.mark.invariant
-    def test_json_and_interactive_rejected(self):
+    def test_json_and_interactive_rejected(self, capsys):
         with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "--json"]):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "json" in err.lower() and "single-turn" in err.lower()
 
     @pytest.mark.invariant
-    def test_json_and_conversational_rejected(self):
+    def test_json_and_conversational_rejected(self, capsys):
         with patch("ore.cli.argparse._sys.argv", ["ore", "-c", "--json"]):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "json" in err.lower() and "single-turn" in err.lower()
 
     @pytest.mark.invariant
-    def test_route_and_tool_rejected(self):
+    def test_route_and_tool_rejected(self, capsys):
         """--route and --tool are mutually exclusive."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -160,6 +174,8 @@ class TestModeValidation:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "route" in err.lower() and "tool" in err.lower()
 
 
 class TestJsonOutput:
@@ -655,6 +671,8 @@ class TestArtifactCli:
 
                         run()
         assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "invalid" in err.lower() or "json" in err.lower()
 
     def test_invalid_artifact_exits_1(self, capsys):
         """Invalid artifact (missing version) exits 1 with stderr message."""
@@ -673,7 +691,7 @@ class TestArtifactCli:
         assert "artifact_version" in err or "Invalid artifact" in err
 
     @pytest.mark.invariant
-    def test_artifact_in_with_prompt_rejected(self):
+    def test_artifact_in_with_prompt_rejected(self, capsys):
         """--artifact-in and prompt are mutually exclusive."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -683,9 +701,11 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-in" in err.lower() and "prompt" in err.lower()
 
     @pytest.mark.invariant
-    def test_artifact_out_with_stream_rejected(self):
+    def test_artifact_out_with_stream_rejected(self, capsys):
         """--artifact-out and --stream are mutually exclusive."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -695,9 +715,11 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-out" in err.lower() and "stream" in err.lower()
 
     @pytest.mark.invariant
-    def test_artifact_out_with_json_to_stdout_rejected(self):
+    def test_artifact_out_with_json_to_stdout_rejected(self, capsys):
         """--artifact-out - and --json are mutually exclusive (both stdout)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -707,9 +729,11 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-out" in err.lower() and "json" in err.lower()
 
     @pytest.mark.invariant
-    def test_artifact_in_with_interactive_rejected(self):
+    def test_artifact_in_with_interactive_rejected(self, capsys):
         """--artifact-in with -i is rejected (single-turn only)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -719,9 +743,13 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-in" in err.lower() and (
+            "single-turn" in err.lower() or "repl" in err.lower()
+        )
 
     @pytest.mark.invariant
-    def test_artifact_in_with_conversational_rejected(self):
+    def test_artifact_in_with_conversational_rejected(self, capsys):
         """--artifact-in with -c is rejected (single-turn only)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -731,9 +759,13 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-in" in err.lower() and (
+            "single-turn" in err.lower() or "repl" in err.lower()
+        )
 
     @pytest.mark.invariant
-    def test_artifact_in_with_tool_rejected(self):
+    def test_artifact_in_with_tool_rejected(self, capsys):
         """--artifact-in with --tool is rejected (mutually exclusive)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -743,9 +775,11 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-in" in err.lower() and "mutually exclusive" in err.lower()
 
     @pytest.mark.invariant
-    def test_artifact_in_with_route_rejected(self):
+    def test_artifact_in_with_route_rejected(self, capsys):
         """--artifact-in with --route is rejected (mutually exclusive)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -755,9 +789,11 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-in" in err.lower() and "mutually exclusive" in err.lower()
 
     @pytest.mark.invariant
-    def test_artifact_in_with_skill_rejected(self):
+    def test_artifact_in_with_skill_rejected(self, capsys):
         """--artifact-in with --skill is rejected (mutually exclusive)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -767,9 +803,11 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-in" in err.lower() and "mutually exclusive" in err.lower()
 
     @pytest.mark.invariant
-    def test_artifact_out_with_interactive_rejected(self):
+    def test_artifact_out_with_interactive_rejected(self, capsys):
         """--artifact-out with -i is rejected (single-turn only)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -779,9 +817,13 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-out" in err.lower() and (
+            "single-turn" in err.lower() or "repl" in err.lower()
+        )
 
     @pytest.mark.invariant
-    def test_artifact_out_with_conversational_rejected(self):
+    def test_artifact_out_with_conversational_rejected(self, capsys):
         """--artifact-out with -c is rejected (single-turn only)."""
         with patch(
             "ore.cli.argparse._sys.argv",
@@ -791,6 +833,10 @@ class TestArtifactCli:
                 from ore.cli import run
 
                 run()
+        err = capsys.readouterr().err
+        assert "artifact-out" in err.lower() and (
+            "single-turn" in err.lower() or "repl" in err.lower()
+        )
 
     @pytest.mark.invariant
     def test_reasoner_called_once_with_artifact_out(self, tmp_path):
