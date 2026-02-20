@@ -110,7 +110,7 @@ def _stream_turn(
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.6 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.6.1 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -227,7 +227,10 @@ def run() -> None:
         valid_perms = [p.value for p in Permission]
         for name in sorted(TOOL_REGISTRY.keys()):
             tool = TOOL_REGISTRY[name]
-            perms = ", ".join(p.value for p in sorted(tool.required_permissions, key=lambda x: x.value))
+            perms = ", ".join(
+                p.value
+                for p in sorted(tool.required_permissions, key=lambda x: x.value)
+            )
             req = f" [requires: {perms}]" if perms else " [no permissions]"
             print(f"  {name}{req}")
             print(f"    {tool.description}")
@@ -283,7 +286,7 @@ def run() -> None:
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.6 interactive (model: {model_id})")
+        print(f"ORE v0.6.1 interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -296,7 +299,9 @@ def run() -> None:
             tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
             print("--- ORE: Reasoning ---")
             if args.stream:
-                _stream_turn(engine, line, None, args.verbose, tool_results=tool_results)
+                _stream_turn(
+                    engine, line, None, args.verbose, tool_results=tool_results
+                )
             else:
                 response = engine.execute(line, tool_results=tool_results)
                 _print_response(response, verbose=args.verbose)
@@ -313,7 +318,7 @@ def run() -> None:
         else:
             session = Session()
         save_name = args.save_session
-        print(f"ORE v0.6 conversational (model: {model_id} | session: {session.id})")
+        print(f"ORE v0.6.1 conversational (model: {model_id} | session: {session.id})")
         if args.resume_session:
             print(f"  Resumed: {args.resume_session}")
         if save_name:
@@ -349,7 +354,7 @@ def run() -> None:
     else:
         tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
         if not args.json:
-            print("--- ORE v0.6: Reasoning ---")
+            print("--- ORE v0.6.1: Reasoning ---")
         if args.stream:
             _stream_turn(
                 engine, args.prompt, None, args.verbose, tool_results=tool_results

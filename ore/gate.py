@@ -63,7 +63,8 @@ class Gate:
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         result.metadata.setdefault("execution_time_ms", elapsed_ms)
         result.metadata.setdefault(
-            "checked_permissions", [p.value for p in sorted(tool.required_permissions, key=lambda x: x.value)]
+            "checked_permissions",
+            [p.value for p in sorted(tool.required_permissions, key=lambda x: x.value)],
         )
         return result
 

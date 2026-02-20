@@ -35,9 +35,10 @@ class TestGate:
         with pytest.raises(GateError) as exc_info:
             gate.run(tool, {"path": "/tmp/foo"})
         assert "read-file" in str(exc_info.value)
-        assert "filesystem-read" in str(exc_info.value).lower() or "permission" in str(
-            exc_info.value
-        ).lower()
+        assert (
+            "filesystem-read" in str(exc_info.value).lower()
+            or "permission" in str(exc_info.value).lower()
+        )
 
     def test_permissive_gate_allows_everything(self):
         gate = Gate.permissive()

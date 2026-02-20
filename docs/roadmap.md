@@ -22,6 +22,8 @@ Short notes on version intent. Not a feature backlog.
 
 **v0.6** — Tool & Gate Framework. Tool interface (`ore/tools.py`) with EchoTool and ReadFileTool; gate (`ore/gate.py`) for default-deny permissions; `--tool`, `--tool-arg`, `--list-tools`, `--grant` CLI flags. Tool results injected pre-reasoning, turn-scoped (never stored in session). One reasoner call per turn preserved; denied tools never execute.
 
+**v0.6.1** — Black formatting fix for CI; version bump to 0.6.1.
+
 ---
 
 Next features (v0.7 → v1.0):
