@@ -162,6 +162,8 @@ Not a chatbot shell (ORE is an orchestration primitive with a single loop and ex
 
 Not a workflow engine
 
+Not a script execution runtime (v0.8 skills inject file contents as context; executable resources are deferred — not forbidden, just out of scope for the current version)
+
 Those may be built on top of ORE, or added in later versions; the core stays minimal and explicit.
 
 Extension Rules
