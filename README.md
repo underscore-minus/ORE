@@ -14,6 +14,7 @@ ORE is not a generic chatbot wrapper. It is a minimal orchestration primitive: o
 - **Routing (v0.7)** — Opt-in `--route`: select a tool or skill by intent (keyword matching). Routing info is printed to stderr; with `--json`, the response includes a `routing` key. No extra LLM call.
 - **Skills (v0.8)** — Filesystem-based instruction modules (`~/.ore/skills/`). Activate via `--skill NAME` or `--route`. YAML frontmatter for metadata; three-level loading (metadata, instructions, resources). Turn-scoped, never stored in session.
 - **Output** — Plain text, streamed tokens (`--stream`), or structured JSON (`--json`). Stdin can supply the prompt when not in REPL mode.
+- **Artifacts (v0.9)** — `--artifact-out` emits a chainable execution artifact; `--artifact-in` consumes one and runs a single turn with its prompt. Single-turn only.
 
 Persona, session lifecycle, and tool execution are all explicit in the CLI and in the orchestrator API. See [docs/architecture.md](docs/architecture.md) and [docs/foundation.md](docs/foundation.md) for invariants and extension rules.
 
@@ -56,6 +57,9 @@ python main.py "Explain the concept of an irreducible loop."
 | `python main.py --stream` or `-s` | Stream output token-by-token (any mode) |
 | `python main.py --verbose` or `-v` | Show response metadata (ID, model, token counts) |
 | `python main.py "Question" --json` or `-j` | Output structured JSON (single-turn only) |
+| `python main.py "Question" --artifact-out artifact.json` | Emit execution artifact to file |
+| `python main.py "Question" --artifact-out -` | Emit artifact JSON to stdout (single-turn) |
+| `python main.py --artifact-in artifact.json` | Run single turn with prompt from artifact |
 | `echo "Question" \| python main.py` | Pipe prompt via stdin (single-turn) |
 
 ---
@@ -66,7 +70,7 @@ python main.py "Explain the concept of an irreducible loop."
 - **`ore/prompts/`** — Aya system persona (injected by orchestrator)
 - **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router, skills)
 - **`main.py`** — Entry point
-- **`docs/`** — Foundation, architecture, roadmap, invariants
+- **`docs/`** — Foundation, architecture, roadmap, invariants, skills, artifact-schema
 - **`requirements.txt`** — Runtime deps; **`requirements-dev.txt`** — pytest, black
 
 ---
@@ -83,4 +87,4 @@ CI runs on push/PR to `main`: Python 3.10, `black --check`, then `pytest`. See [
 
 ---
 
-Session persistence (v0.4) and structured output/stdin (v0.5) are opt-in. The tool & gate framework (v0.6) adds controlled, explicit side effects before reasoning; tool results are turn-scoped and never stored in the session. Routing (v0.7) adds intent-based tool and skill selection via `--route` (rule-based; no extra LLM call). Skills (v0.8) inject filesystem-based instructions into context via `--skill NAME`; turn-scoped, never stored in session. Aya's persona lives in `ore/prompts/aya.txt` and is injected by the orchestrator in `ore/core.py`.
+Session persistence (v0.4) and structured output/stdin (v0.5) are opt-in. The tool & gate framework (v0.6) adds controlled, explicit side effects before reasoning; tool results are turn-scoped and never stored in the session. Routing (v0.7) adds intent-based tool and skill selection via `--route` (rule-based; no extra LLM call). Skills (v0.8) inject filesystem-based instructions into context via `--skill NAME`; turn-scoped, never stored in session. Artifacts (v0.9) enable chainable execution via `--artifact-out` and `--artifact-in` (schema in `docs/artifact-schema.md`). Aya's persona lives in `ore/prompts/aya.txt` and is injected by the orchestrator in `ore/core.py`.

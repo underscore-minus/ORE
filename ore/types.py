@@ -26,7 +26,7 @@ class Response:
     """
     Reasoner output for a single turn.
 
-    Metadata (diagnostic — schema will be locked in v0.3.1):
+    Metadata (diagnostic — schema locked in v0.3.1):
     The `metadata` dict is populated by the reasoner backend on a best-effort
     basis. Callers must not depend on specific keys for core behaviour.
 
@@ -36,8 +36,8 @@ class Response:
       eval_duration       (int)   — response generation time in nanoseconds.
       prompt_eval_duration(int)   — prompt processing time in nanoseconds.
 
-    These keys will be formally committed to in v0.3.1. Until then, treat
-    them as present-when-available but structurally unstable.
+    These keys are formally committed for AyaReasoner in v0.3.1.
+    Custom reasoners may omit keys unless they adopt the same contract.
     """
 
     content: str
@@ -135,3 +135,229 @@ class RoutingDecision:
     reasoning: str  # Human-readable explanation for the decision
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
+
+
+# ---------------------------------------------------------------------------
+# v0.9 — Chainable Execution Artifacts
+# ---------------------------------------------------------------------------
+
+ARTIFACT_VERSION = "ore.exec.v1"
+
+"""
+Non-goals for the artifact (v0.9):
+- No embedded session history replay by default.
+- No hidden execution directives.
+- No engine-side invocation of subsequent ORE executions.
+- Chaining happens via data, not runtime coupling.
+"""
+
+
+@dataclass
+class ExecutionArtifactInput:
+    """
+    Input context that produced an execution. Captured for reconstructability.
+
+    mode: "single_turn" for v0.9; conversational modes deferred.
+    routing/tool/skill summaries capture what was injected into the turn.
+    """
+
+    prompt: str
+    model_id: str
+    mode: str  # "single_turn"
+    routing: Optional[Dict[str, Any]] = None  # RoutingDecision as dict, or None
+    tools: Optional[List[str]] = None  # Tool names run this turn
+    skills: Optional[List[str]] = None  # Skill names activated this turn
+
+
+@dataclass
+class ExecutionArtifactOutput:
+    """Reasoner output; matches Response shape for JSON compatibility."""
+
+    id: str
+    content: str
+    model_id: str
+    timestamp: float
+    metadata: Dict[str, Any]
+
+
+@dataclass
+class ExecutionArtifactContinuation:
+    """
+    Declared signal only. Never inferred.
+
+    requested: True if the output explicitly asked for a follow-up run.
+    reason: Optional human-readable explanation (e.g. from output parsing).
+    """
+
+    requested: bool = False
+    reason: Optional[str] = None
+
+
+@dataclass
+class ExecutionArtifact:
+    """
+    v0.9 self-describing execution artifact.
+
+    One ORE execution produces this; a platform can feed it into another
+    without reinterpretation or human involvement.
+
+    Schema version: ARTIFACT_VERSION. Forward-compat: tolerate unknown keys.
+    """
+
+    artifact_version: str
+    execution_id: str
+    timestamp: float
+    input: ExecutionArtifactInput
+    output: ExecutionArtifactOutput
+    continuation: ExecutionArtifactContinuation
+
+    @classmethod
+    def from_response(
+        cls,
+        response: Response,
+        prompt: str,
+        model_id: str,
+        routing: Optional[RoutingDecision] = None,
+        tools: Optional[List[str]] = None,
+        skills: Optional[List[str]] = None,
+        continuation_requested: bool = False,
+        continuation_reason: Optional[str] = None,
+    ) -> "ExecutionArtifact":
+        """Build artifact from a completed turn (single-turn only)."""
+        routing_dict: Optional[Dict[str, Any]] = None
+        if routing is not None:
+            routing_dict = {
+                "target": routing.target,
+                "target_type": routing.target_type,
+                "confidence": routing.confidence,
+                "args": routing.args,
+                "reasoning": routing.reasoning,
+                "id": routing.id,
+                "timestamp": routing.timestamp,
+            }
+        return cls(
+            artifact_version=ARTIFACT_VERSION,
+            execution_id=response.id,
+            timestamp=response.timestamp,
+            input=ExecutionArtifactInput(
+                prompt=prompt,
+                model_id=model_id,
+                mode="single_turn",
+                routing=routing_dict,
+                tools=tools or None,
+                skills=skills or None,
+            ),
+            output=ExecutionArtifactOutput(
+                id=response.id,
+                content=response.content,
+                model_id=response.model_id,
+                timestamp=response.timestamp,
+                metadata=dict(response.metadata),
+            ),
+            continuation=ExecutionArtifactContinuation(
+                requested=continuation_requested,
+                reason=continuation_reason,
+            ),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to JSON-serializable dict."""
+        return {
+            "artifact_version": self.artifact_version,
+            "execution_id": self.execution_id,
+            "timestamp": self.timestamp,
+            "input": {
+                "prompt": self.input.prompt,
+                "model_id": self.input.model_id,
+                "mode": self.input.mode,
+                "routing": self.input.routing,
+                "tools": self.input.tools,
+                "skills": self.input.skills,
+            },
+            "output": {
+                "id": self.output.id,
+                "content": self.output.content,
+                "model_id": self.output.model_id,
+                "timestamp": self.output.timestamp,
+                "metadata": self.output.metadata,
+            },
+            "continuation": {
+                "requested": self.continuation.requested,
+                "reason": self.continuation.reason,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ExecutionArtifact":
+        """
+        Deserialize from dict (e.g. JSON load).
+        Raises ValueError if artifact_version missing or unsupported.
+        Tolerates unknown top-level keys for forward compatibility.
+        """
+        version = data.get("artifact_version")
+        if not version:
+            raise ValueError("Artifact missing required field: artifact_version")
+        if version != ARTIFACT_VERSION:
+            raise ValueError(
+                f"Unsupported artifact version: {version}. Expected {ARTIFACT_VERSION}"
+            )
+
+        inp = data.get("input")
+        if not inp or not isinstance(inp, dict):
+            raise ValueError("Artifact missing or invalid 'input' object")
+        prompt = inp.get("prompt")
+        model_id = inp.get("model_id")
+        if prompt is None or model_id is None:
+            raise ValueError("Artifact input must include 'prompt' and 'model_id'")
+        raw_mode = inp.get("mode")
+        mode = str(raw_mode) if raw_mode is not None else "single_turn"
+        input_obj = ExecutionArtifactInput(
+            prompt=str(prompt),
+            model_id=str(model_id),
+            mode=mode,
+            routing=(
+                inp.get("routing") if isinstance(inp.get("routing"), dict) else None
+            ),
+            tools=inp.get("tools") if isinstance(inp.get("tools"), list) else None,
+            skills=inp.get("skills") if isinstance(inp.get("skills"), list) else None,
+        )
+
+        out = data.get("output")
+        if not out or not isinstance(out, dict):
+            raise ValueError("Artifact missing or invalid 'output' object")
+        try:
+            out_ts = float(out.get("timestamp", 0.0))
+        except (TypeError, ValueError):
+            raise ValueError("Artifact output.timestamp must be a number")
+        output_obj = ExecutionArtifactOutput(
+            id=str(out.get("id", "")),
+            content=str(out.get("content", "")),
+            model_id=str(out.get("model_id", "")),
+            timestamp=out_ts,
+            metadata=(
+                dict(out.get("metadata", {}))
+                if isinstance(out.get("metadata"), dict)
+                else {}
+            ),
+        )
+
+        cont = data.get("continuation")
+        if not cont or not isinstance(cont, dict):
+            cont = {}
+        continuation_obj = ExecutionArtifactContinuation(
+            requested=bool(cont.get("requested", False)),
+            reason=cont.get("reason") if isinstance(cont.get("reason"), str) else None,
+        )
+
+        try:
+            top_ts = float(data.get("timestamp", output_obj.timestamp))
+        except (TypeError, ValueError):
+            raise ValueError("Artifact timestamp must be a number")
+        return cls(
+            artifact_version=str(data.get("artifact_version", ARTIFACT_VERSION)),
+            execution_id=str(data.get("execution_id", output_obj.id)),
+            timestamp=top_ts,
+            input=input_obj,
+            output=output_obj,
+            continuation=continuation_obj,
+        )

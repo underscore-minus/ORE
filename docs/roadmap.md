@@ -56,6 +56,13 @@ Filesystem-based skills. SKILL.md + YAML frontmatter. Three-level progressive
 disclosure: metadata → instructions → resources. Skills routable via existing
 router. Turn-scoped, session-pure, one reasoner call preserved.
 
+**v0.9 — Chainable Execution Artifacts**
+*The last engine primitive.* Versioned execution artifact (`ore.exec.v1`) with
+`--artifact-out` (emit) and `--artifact-in` (consume). Single-turn only.
+Chaining via data, not runtime coupling. Schema documented in
+`docs/artifact-schema.md`. Existing `--json` workflows remain backward
+compatible. All core invariants preserved and test-enforced.
+
 ---
 
 ## In Progress
@@ -67,51 +74,6 @@ Branch: `feature/datetime-tool`.
 ---
 
 ## Remaining Engine Versions
-
-**v0.9 — Chainable Execution Artifacts**
-*The last engine primitive.*
-
-Problem solved: humans currently act as the glue between ORE executions.
-They interpret output, decide how to re-prompt, and route context forward.
-v0.9 removes humans as routers by making ORE's output self-describing and
-re-executable.
-
-Definition: one ORE execution produces an artifact that can be fed directly
-into another ORE execution as input — without reinterpretation, mutation,
-or human involvement.
-
-Key constraints:
-- Chaining happens via data, not runtime coupling
-- ORE does not call or orchestrate other ORE instances
-- ORE produces an artifact; what consumes it is platform concern
-- Engine remains ignorant of what happens after output
-
-What the artifact must contain:
-- The input that produced it
-- The output it produced
-- Sufficient context to reconstruct the execution
-- Optional continuation signal (declared, never inferred)
-- Version identifier for forward compatibility
-
-What this unlocks without new engine features:
-- Pipelines
-- DAGs
-- Fan-out / fan-in
-- Agent swarms
-- Review loops
-- CI-style reasoning
-- Scheduled execution
-- Distributed execution
-
-All of that becomes platform. The engine is done.
-
-Invariants preserved:
-- One reasoner call per turn
-- No hidden state
-- Session append-only semantics
-- CLI remains sole execution authority
-
----
 
 **v0.9.1 — Interface Lock**
 *The stability declaration.*

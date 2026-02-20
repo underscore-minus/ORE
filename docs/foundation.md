@@ -1,4 +1,4 @@
-ORE — Foundation Document (v0.8)
+ORE — Foundation Document (v0.9)
 
 Purpose
 
@@ -57,7 +57,7 @@ v0.1 assumes local execution via Ollama.
 
 Remote backends are an extension, not a replacement.
 
-What Exists in v0.8
+What Exists in v0.9
 
 Runtime Model
 
@@ -71,11 +71,13 @@ Conversational REPL (--conversational / -c): many turns in one process with a sh
 
 Persistent sessions (--save-session NAME / --resume-session NAME): opt-in file-based persistence in ~/.ore/sessions/. Both imply conversational mode. Sessions saved eagerly after each turn.
 
-Tools (v0.6): optional pre-reasoning step. One or more tools can be run via CLI (--tool NAME, --tool-arg KEY=VALUE). A gate enforces permissions (--grant PERM; default-deny). Tool results are injected into the message list for that turn only; they are never stored in the session. One reasoner call per turn is preserved.
+Tools (v0.6): optional pre-reasoning step. One explicit tool target can be run per turn via CLI (`--tool NAME`, `--tool-arg KEY=VALUE`). A gate enforces permissions (`--grant PERM`; default-deny). Tool results are injected into the message list for that turn only; they are never stored in the session. One reasoner call per turn is preserved.
 
 Routing (v0.7): opt-in intent detection via `--route`. Rule-based keyword matching selects a tool or skill from the prompt. No extra LLM call. Decision visible on stderr and in `--json`. Fallback when no match or below confidence threshold.
 
 Skills (v0.8): filesystem-based instruction modules at `~/.ore/skills/`. Activated via `--skill NAME` or `--route`. Three-level loading: metadata (always), instructions (on activation), resources (on demand). Injected as `role="system"` messages before tool results. Turn-scoped — never stored in the session. One reasoner call per turn preserved.
+
+Artifacts (v0.9): `--artifact-out` emits a versioned execution artifact; `--artifact-in` consumes one and runs a single turn with its input.prompt. Chaining via data only; no runtime orchestration. Single-turn only.
 
 Session
 
@@ -129,7 +131,7 @@ Discovery and default-selection logic for Ollama models.
 Data Contracts
 
 ore/types.py
-Defines Message, Response, Session, ToolResult (v0.6), RoutingTarget, RoutingDecision (v0.7), and SkillMetadata (v0.8).
+Defines Message, Response, Session, ToolResult (v0.6), RoutingTarget, RoutingDecision (v0.7), SkillMetadata (v0.8), and ExecutionArtifact (v0.9).
 
 ore/store.py
 SessionStore abstraction and FileSessionStore for opt-in persistence.
@@ -212,6 +214,7 @@ v0.5 — Composable output (structured JSON, stdin ingestion; CLI only; core unc
 v0.6 — Tool & gate framework (explicit tools, default-deny permissions; tool results turn-scoped, not stored in session).
 v0.7 — Routing / intent detection (opt-in `--route`; rule-based selection of tool from prompt; no extra LLM call; routing decision visible on stderr and in `--json`).
 v0.8 — Skill / instruction activation (filesystem-based skills at `~/.ore/skills/`; `--skill NAME`; `--route` merges tool + skill targets; instructions injected as `role="system"` before tool results; turn-scoped, never stored in session).
+v0.9 — Chainable execution artifacts (`--artifact-out`, `--artifact-in`; versioned schema; single-turn only; chaining via data).
 
 Guiding Question
 

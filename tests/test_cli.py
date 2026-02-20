@@ -18,7 +18,7 @@ def _parse(args: list[str]) -> argparse.Namespace:
     # Instead, import the module and call parse_args via a subprocess-style check.
     from ore.cli import run  # noqa: F401 — ensures import works
 
-    parser = argparse.ArgumentParser(description="ORE v0.6 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.9 CLI")
     parser.add_argument("prompt", type=str, nargs="?", default=None)
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument("--list-models", action="store_true")
@@ -34,6 +34,11 @@ def _parse(args: list[str]) -> argparse.Namespace:
     parser.add_argument("--list-tools", action="store_true")
     parser.add_argument("--grant", action="append", default=[])
     parser.add_argument("--route", action="store_true")
+    parser.add_argument("--route-threshold", type=float, default=0.5)
+    parser.add_argument("--skill", type=str, default=None)
+    parser.add_argument("--list-skills", action="store_true")
+    parser.add_argument("--artifact-out", type=str, nargs="?", const="-", default=None)
+    parser.add_argument("--artifact-in", type=str, default=None)
     return parser.parse_args(args)
 
 
@@ -455,3 +460,357 @@ class TestSkillCli:
         assert "routing" in data
         assert data["routing"]["target"] == "test-skill"
         assert data["routing"]["target_type"] == "skill"
+
+
+class TestArtifactCli:
+    """Tests for v0.9 --artifact-out / --artifact-in."""
+
+    def test_artifact_out_includes_required_keys(self, tmp_path, capsys):
+        """--artifact-out produces valid JSON with artifact_version and required keys."""
+        out_path = tmp_path / "artifact.json"
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", str(out_path)],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        captured = capsys.readouterr()
+        assert "[AYA]:" in captured.out
+        data = json.loads(out_path.read_text())
+        assert data["artifact_version"] == "ore.exec.v1"
+        assert "execution_id" in data
+        assert "timestamp" in data
+        assert "input" in data
+        assert data["input"]["prompt"] == "hello"
+        assert data["input"]["model_id"] == "fake-model"
+        assert data["input"]["mode"] == "single_turn"
+        assert "output" in data
+        assert data["output"]["content"] == "fake response"
+        assert "continuation" in data
+        assert "requested" in data["continuation"]
+
+    def test_artifact_out_to_stdout(self, capsys):
+        """--artifact-out - writes artifact JSON to stdout."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", "-"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["artifact_version"] == "ore.exec.v1"
+        assert data["input"]["prompt"] == "hello"
+        assert data["output"]["content"] == "fake response"
+
+    def test_artifact_in_reproduces_prompt(self, tmp_path, capsys):
+        """--artifact-in runs single-turn with artifact's input.prompt."""
+        artifact_path = tmp_path / "prev.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "artifact_version": "ore.exec.v1",
+                    "execution_id": "x",
+                    "timestamp": 1.0,
+                    "input": {
+                        "prompt": "prompt from artifact",
+                        "model_id": "fake-model",
+                        "mode": "single_turn",
+                    },
+                    "output": {
+                        "id": "x",
+                        "content": "old response",
+                        "model_id": "fake-model",
+                        "timestamp": 1.0,
+                        "metadata": {},
+                    },
+                    "continuation": {"requested": False, "reason": None},
+                }
+            )
+        )
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", str(artifact_path)],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        captured = capsys.readouterr()
+        assert "prompt from artifact" not in captured.out  # That was input
+        assert "fake response" in captured.out  # New reasoner response
+
+    def test_artifact_in_from_stdin(self, capsys):
+        """--artifact-in - reads artifact from stdin."""
+        artifact_json = json.dumps(
+            {
+                "artifact_version": "ore.exec.v1",
+                "execution_id": "x",
+                "timestamp": 1.0,
+                "input": {
+                    "prompt": "stdin artifact prompt",
+                    "model_id": "fake-model",
+                    "mode": "single_turn",
+                },
+                "output": {
+                    "id": "x",
+                    "content": "old",
+                    "model_id": "fake-model",
+                    "timestamp": 1.0,
+                    "metadata": {},
+                },
+                "continuation": {"requested": False, "reason": None},
+            }
+        )
+        fake_stdin = io.StringIO(artifact_json)
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--artifact-in", "-"]):
+            with patch("ore.cli.sys.stdin", fake_stdin):
+                with patch("ore.cli.AyaReasoner", FakeReasoner):
+                    with patch("ore.cli.default_model", return_value="fake-model"):
+                        from ore.cli import run
+
+                        run()
+        captured = capsys.readouterr()
+        assert "fake response" in captured.out
+
+    def test_artifact_out_file_with_json(self, tmp_path, capsys):
+        """--artifact-out FILE --json: JSON on stdout, artifact in file."""
+        out_path = tmp_path / "artifact.json"
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", str(out_path), "--json"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "id" in data
+        assert "content" in data
+        assert data["content"] == "fake response"
+        artifact_data = json.loads(out_path.read_text())
+        assert artifact_data["artifact_version"] == "ore.exec.v1"
+        assert artifact_data["input"]["prompt"] == "hello"
+        assert artifact_data["output"]["content"] == "fake response"
+
+    def test_artifact_in_then_artifact_out(self, tmp_path, capsys):
+        """--artifact-in X --artifact-out Y: consume artifact, produce new artifact (chaining)."""
+        in_path = tmp_path / "prev.json"
+        out_path = tmp_path / "next.json"
+        in_path.write_text(
+            json.dumps(
+                {
+                    "artifact_version": "ore.exec.v1",
+                    "execution_id": "prev",
+                    "timestamp": 1.0,
+                    "input": {
+                        "prompt": "chained prompt",
+                        "model_id": "fake-model",
+                        "mode": "single_turn",
+                    },
+                    "output": {
+                        "id": "prev",
+                        "content": "old response",
+                        "model_id": "fake-model",
+                        "timestamp": 1.0,
+                        "metadata": {},
+                    },
+                    "continuation": {"requested": False, "reason": None},
+                }
+            )
+        )
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", str(in_path), "--artifact-out", str(out_path)],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        captured = capsys.readouterr()
+        assert "fake response" in captured.out
+        artifact_data = json.loads(out_path.read_text())
+        assert artifact_data["artifact_version"] == "ore.exec.v1"
+        assert artifact_data["input"]["prompt"] == "chained prompt"
+        assert artifact_data["output"]["content"] == "fake response"
+
+    def test_artifact_in_malformed_json_exits_1(self, capsys):
+        """--artifact-in - with malformed JSON on stdin exits 1."""
+        fake_stdin = io.StringIO("not json at all")
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--artifact-in", "-"]):
+            with patch("ore.cli.sys.stdin", fake_stdin):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    with pytest.raises(SystemExit) as exc_info:
+                        from ore.cli import run
+
+                        run()
+        assert exc_info.value.code == 1
+
+    def test_invalid_artifact_exits_1(self, capsys):
+        """Invalid artifact (missing version) exits 1 with stderr message."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", "-"],
+        ):
+            with patch("ore.cli.sys.stdin", io.StringIO('{"input":{},"output":{}}')):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    with pytest.raises(SystemExit) as exc_info:
+                        from ore.cli import run
+
+                        run()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "artifact_version" in err or "Invalid artifact" in err
+
+    @pytest.mark.invariant
+    def test_artifact_in_with_prompt_rejected(self):
+        """--artifact-in and prompt are mutually exclusive."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-in", "/dev/null"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_out_with_stream_rejected(self):
+        """--artifact-out and --stream are mutually exclusive."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", "-", "--stream"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_out_with_json_to_stdout_rejected(self):
+        """--artifact-out - and --json are mutually exclusive (both stdout)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", "-", "--json"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_in_with_interactive_rejected(self):
+        """--artifact-in with -i is rejected (single-turn only)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", "/dev/null", "-i"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_in_with_conversational_rejected(self):
+        """--artifact-in with -c is rejected (single-turn only)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", "/dev/null", "-c"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_in_with_tool_rejected(self):
+        """--artifact-in with --tool is rejected (mutually exclusive)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", "/dev/null", "--tool", "echo"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_in_with_route_rejected(self):
+        """--artifact-in with --route is rejected (mutually exclusive)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", "/dev/null", "--route"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_in_with_skill_rejected(self):
+        """--artifact-in with --skill is rejected (mutually exclusive)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--artifact-in", "/dev/null", "--skill", "foo"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_out_with_interactive_rejected(self):
+        """--artifact-out with -i is rejected (single-turn only)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", "-", "-i"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_artifact_out_with_conversational_rejected(self):
+        """--artifact-out with -c is rejected (single-turn only)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", "-", "-c"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_reasoner_called_once_with_artifact_out(self, tmp_path):
+        """One reasoner call per artifact-driven turn (invariant)."""
+        out_path = tmp_path / "artifact.json"
+        reasoner_instance: list[FakeReasoner] = []
+
+        def capture_reasoner(*args: object, **kwargs: object) -> FakeReasoner:
+            inst = FakeReasoner(*args, **kwargs)
+            reasoner_instance.append(inst)
+            return inst
+
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", str(out_path)],
+        ):
+            with patch("ore.cli.AyaReasoner", side_effect=capture_reasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        assert len(reasoner_instance) == 1
+        assert reasoner_instance[0].reason_call_count == 1

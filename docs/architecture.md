@@ -1,6 +1,6 @@
-# ORE Architecture (v0.8)
+# ORE Architecture (v0.9)
 
-**Version**: v0.8 (Skill / Instruction Activation)
+**Version**: v0.9 (Chainable Execution Artifacts)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -17,7 +17,7 @@ ORE supports four modes, all sharing the same loop:
 | Conversational REPL | `--conversational` / `-c` | `Session` | Yes |
 | Conversational (persisted) | `--save-session` / `--resume-session` | `Session` | Yes (implies `-c`) |
 
-**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`). **v0.6:** `--tool NAME` runs a built-in tool before reasoning (single tool per turn); `--tool-arg KEY=VALUE` (repeatable) passes arguments; `--list-tools` lists tools and exits; `--grant PERM` (repeatable) grants a permission (default-deny). **v0.7:** `--route` selects a tool or skill by intent (keyword matching); mutually exclusive with `--tool`; routing info printed to stderr; fallback when no match or below confidence threshold. `--route-threshold FLOAT` overrides the default confidence threshold (default 0.5; lower = more permissive). **v0.8:** `--skill NAME` activates a skill by name (injects instructions into context); `--list-skills` lists discovered skills; `--skill` and `--tool` can coexist; `--route` now merges tool and skill targets.
+**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`). **v0.6:** `--tool NAME` runs a built-in tool before reasoning (single tool per turn); `--tool-arg KEY=VALUE` (repeatable) passes arguments; `--list-tools` lists tools and exits; `--grant PERM` (repeatable) grants a permission (default-deny). **v0.7:** `--route` selects a tool by intent (keyword matching); mutually exclusive with `--tool`; routing info printed to stderr; fallback when no match or below confidence threshold. `--route-threshold FLOAT` overrides the default confidence threshold (default 0.5; lower = more permissive). **v0.8:** `--skill NAME` activates a skill by name (injects instructions into context); `--list-skills` lists discovered skills; `--skill` and `--tool` can coexist; `--route` now merges tool and skill targets.
 
 **Mode precedence:** If `--save-session` or `--resume-session` is present → conversational. Else if `-c` → conversational. Else → stateless.
 
@@ -365,6 +365,39 @@ Instructions body (Level 2). Loaded when the skill is activated.
 
 ---
 
+## Chainable Execution Artifacts (v0.9)
+
+A single ORE turn can emit a **self-describing execution artifact** that can be consumed by another run without human reinterpretation. Chaining happens via data, not runtime coupling.
+
+### Schema
+
+See [docs/artifact-schema.md](artifact-schema.md) for the full schema. Key fields:
+
+- `artifact_version` — `ore.exec.v1`; required for forward compatibility
+- `input` — prompt, model_id, mode, optional routing/tools/skills summaries
+- `output` — response payload (Response shape)
+- `continuation` — declared signal only (`requested`, `reason`); never inferred
+
+### CLI Flags
+
+- **`--artifact-out [PATH]`** — Emit artifact. `-` or omit for stdout; path for file. Single-turn only; incompatible with `--stream`. When stdout, suppresses human response (stdout is artifact JSON only).
+- **`--artifact-in PATH`** — Read artifact from path or `-` (stdin). Uses `input.prompt` for the turn; `input.model_id` used unless `--model` overrides. Mutually exclusive with prompt, `--tool`, `--route`, `--skill`, and REPL modes.
+
+### Data Flow
+
+```
+CLI (single-turn) → build context → reasoner (once) → response → artifact.to_dict() → stdout/file
+CLI (--artifact-in) → load artifact → extract prompt → reasoner (once) → response
+```
+
+### Invariants
+
+- One reasoner call per artifact-driven turn.
+- Artifact does not embed session history (single-turn only in v0.9).
+- ORE does not orchestrate other ORE instances; platform consumes artifact.
+
+---
+
 ## External Dependencies and Requirements
 
 ### Python and environment
@@ -393,8 +426,9 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
 - **`docs/invariants.md`** — Mechanical invariants (loop, session, CLI); testable guarantees.
-- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.8.
+- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.9.
 - **`docs/skills.md`** — Locked design decisions for v0.8 skill activation.
+- **`docs/artifact-schema.md`** — Execution artifact schema and non-goals (v0.9).
 - **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router, skills); no live Ollama required.
 - **`.github/workflows/ci.yml`** — CI: Python 3.10, black check, pytest.
 - **`main.py`** — Thin entry point.
@@ -402,7 +436,7 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **`ore/core.py`** — Orchestration: loop construction, persona injection, session threading.
 - **`ore/reasoner.py`** — Reasoner abstraction and Ollama backend.
 - **`ore/models.py`** — Model discovery and default selection.
-- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`, `ToolResult`, `RoutingTarget`, `RoutingDecision`, `SkillMetadata`).
+- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`, `ToolResult`, `RoutingTarget`, `RoutingDecision`, `SkillMetadata`, `ExecutionArtifact`).
 - **`ore/store.py`** — Session persistence (`SessionStore`, `FileSessionStore`).
 - **`ore/tools.py`** — Tool interface and built-in tools (`Tool`, `EchoTool`, `ReadFileTool`, `TOOL_REGISTRY`); optional `routing_hints()`, `extract_args(prompt)`.
 - **`ore/gate.py`** — Permission gate for tool execution (`Permission`, `Gate`, `GateError`).

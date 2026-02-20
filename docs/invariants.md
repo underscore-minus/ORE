@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.8)
+# ORE Mechanical Invariants (v0.9)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 
@@ -104,6 +104,23 @@ For each `ORE.execute()` or `ORE.execute_stream()` invocation:
 
 ---
 
+## Artifact Invariants (v0.9)
+
+**Artifact is single-turn only.**
+
+- `--artifact-out` and `--artifact-in` are incompatible with REPL modes (interactive, conversational, save/resume).
+- `--artifact-in` is mutually exclusive with prompt, `--tool`, `--route`, `--skill`.
+- `--artifact-out` and `--stream` are mutually exclusive.
+- `--artifact-out -` and `--json` are mutually exclusive (both write to stdout).
+
+**One reasoner call per turn** — Artifact emit/ingest does not add a second reasoner call. Artifact is materialized after the response; ingestion runs a single turn with the artifact's input.prompt.
+
+**Artifact schema is versioned** — `artifact_version` (e.g. `ore.exec.v1`) required; unsupported versions raise `ValueError` on parse.
+
+**How we test:** `tests/test_cli.py` — `TestArtifactCli` (emission, ingestion, invalid artifact, flag conflicts); `tests/test_types.py` — `TestExecutionArtifact` (serialization, schema validation).
+
+---
+
 ## Non-invariants (explicitly not guaranteed)
 
 The following are **not** invariants; we do not guarantee them:
@@ -118,4 +135,4 @@ This prevents future contributors from treating these as upgradable invariants.
 
 ## Tests Marked as Invariant
 
-Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py`, `tests/test_cli.py`, `tests/test_gate.py`, and `tests/test_router.py` for the full suite.
+Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py`, `tests/test_cli.py`, `tests/test_gate.py`, `tests/test_router.py`, and artifact tests in `tests/test_cli.py` for the full suite.

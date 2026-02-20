@@ -7,11 +7,13 @@ v0.5 adds --json / -j for structured output and stdin ingestion for piped prompt
 v0.6 adds --tool / --tool-arg / --list-tools / --grant for tool & gate framework.
 v0.7 adds --route for intent-based tool selection (routing info to stderr).
 v0.8 adds --skill / --list-skills for skill activation; routing merges tool + skill targets.
+v0.9 adds --artifact-out / --artifact-in for chainable execution artifacts.
 """
 
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .core import ORE
@@ -26,10 +28,49 @@ from .skills import (
 )
 from .store import FileSessionStore
 from .tools import TOOL_REGISTRY
-from .types import Response, RoutingDecision, Session, SkillMetadata, ToolResult
+from .types import (
+    ExecutionArtifact,
+    Response,
+    RoutingDecision,
+    Session,
+    SkillMetadata,
+    ToolResult,
+)
 
 # Commands that exit any REPL mode (case-insensitive)
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
+
+
+def _load_artifact_and_set_prompt(args: argparse.Namespace) -> None:
+    """
+    Load artifact from --artifact-in path, validate, and set args.prompt (and
+    args.model if not overridden). Exits 1 on invalid artifact.
+    """
+    path = args.artifact_in
+    if path == "-":
+        raw = sys.stdin.read()
+    else:
+        try:
+            raw = Path(path).read_text(encoding="utf-8")
+        except FileNotFoundError:
+            print(f"Artifact file not found: {path}", file=sys.stderr)
+            sys.exit(1)
+        except OSError as e:
+            print(f"Error reading artifact: {e}", file=sys.stderr)
+            sys.exit(1)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"Invalid artifact JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        artifact = ExecutionArtifact.from_dict(data)
+    except ValueError as e:
+        print(f"Invalid artifact: {e}", file=sys.stderr)
+        sys.exit(1)
+    args.prompt = artifact.input.prompt
+    if args.model is None:
+        args.model = artifact.input.model_id
 
 
 def _parse_tool_args(tool_arg_list: Optional[List[str]]) -> dict:
@@ -210,7 +251,7 @@ def _stream_turn(
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.8 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.9 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -327,6 +368,28 @@ def run() -> None:
         action="store_true",
         help="List discovered skills from ~/.ore/skills/ and exit",
     )
+    parser.add_argument(
+        "--artifact-out",
+        type=str,
+        nargs="?",
+        const="-",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Emit execution artifact (v0.9). PATH or - for stdout; omit for no artifact. "
+            "Single-turn only; incompatible with --stream."
+        ),
+    )
+    parser.add_argument(
+        "--artifact-in",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Read artifact from PATH (or - for stdin) and run single-turn with its input. "
+            "Mutually exclusive with prompt arg and REPL modes."
+        ),
+    )
     args = parser.parse_args()
 
     if args.route and args.tool:
@@ -337,6 +400,41 @@ def run() -> None:
         parser.error(
             "--interactive cannot be used with --save-session or --resume-session"
         )
+
+    # v0.9 artifact validation
+    if args.artifact_in is not None:
+        if args.prompt is not None:
+            parser.error("--artifact-in and prompt are mutually exclusive")
+        if (
+            args.interactive
+            or args.conversational
+            or args.save_session
+            or args.resume_session
+        ):
+            parser.error(
+                "--artifact-in is single-turn only; incompatible with REPL modes"
+            )
+        if args.tool or args.route or args.skill:
+            parser.error(
+                "--artifact-in is mutually exclusive with --tool, --route, --skill"
+            )
+    if args.artifact_out is not None:
+        if args.stream:
+            parser.error("--artifact-out and --stream are mutually exclusive")
+        if (
+            args.interactive
+            or args.conversational
+            or args.save_session
+            or args.resume_session
+        ):
+            parser.error(
+                "--artifact-out is single-turn only; incompatible with REPL modes"
+            )
+        if args.json and (args.artifact_out == "-" or args.artifact_out is None):
+            parser.error(
+                "--artifact-out to stdout and --json are mutually exclusive "
+                "(both write to stdout)"
+            )
 
     if args.list_models:
         models = fetch_models()
@@ -402,6 +500,10 @@ def run() -> None:
             "--json is single-turn only; incompatible with --interactive and --conversational"
         )
 
+    # v0.9: load prompt from artifact when --artifact-in
+    if args.artifact_in is not None:
+        _load_artifact_and_set_prompt(args)
+
     # Single-turn mode requires a prompt; REPL modes do not
     if not _repl_mode and args.prompt is None:
         if not sys.stdin.isatty():
@@ -422,13 +524,13 @@ def run() -> None:
         if not model_id:
             print("No Ollama models found. Install one with e.g. ollama pull llama3.2")
             sys.exit(1)
-        if not _repl_mode and not args.json:
+        if not _repl_mode and not args.json and args.artifact_out != "-":
             print(f"Using model: {model_id}\n")
 
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.8 interactive (model: {model_id})")
+        print(f"ORE v0.9 interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -480,7 +582,7 @@ def run() -> None:
         else:
             session = Session()
         save_name = args.save_session
-        print(f"ORE v0.8 conversational (model: {model_id} | session: {session.id})")
+        print(f"ORE v0.9 conversational (model: {model_id} | session: {session.id})")
         if args.resume_session:
             print(f"  Resumed: {args.resume_session}")
         if save_name:
@@ -550,8 +652,8 @@ def run() -> None:
                 skill_context = (skill_context or []) + route_skill_ctx
         else:
             tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
-        if not args.json:
-            print("--- ORE v0.8: Reasoning ---")
+        if not args.json and args.artifact_out != "-":
+            print("--- ORE v0.9: Reasoning ---")
         if args.stream:
             _stream_turn(
                 engine,
@@ -567,7 +669,36 @@ def run() -> None:
                 tool_results=tool_results,
                 skill_context=skill_context,
             )
-            if args.json:
+            # v0.9: when artifact goes to stdout, skip human/json response (stdout is artifact only)
+            if args.artifact_out == "-":
+                pass  # Will print artifact below
+            elif args.json:
                 _print_json_response(response, routing=routing_decision)
             else:
                 _print_response(response, verbose=args.verbose)
+            # v0.9: emit artifact if requested
+            if args.artifact_out is not None:
+                tool_names = [r.tool_name for r in (tool_results or [])]
+                skill_names: List[str] = []
+                if args.skill:
+                    skill_names.append(args.skill)
+                if (
+                    routing_decision
+                    and routing_decision.target_type == "skill"
+                    and routing_decision.target
+                ):
+                    skill_names.append(routing_decision.target)
+                skill_names = list(dict.fromkeys(skill_names))
+                artifact = ExecutionArtifact.from_response(
+                    response=response,
+                    prompt=args.prompt,
+                    model_id=model_id,
+                    routing=routing_decision,
+                    tools=tool_names if tool_names else None,
+                    skills=skill_names if skill_names else None,
+                )
+                artifact_json = json.dumps(artifact.to_dict())
+                if args.artifact_out == "-":
+                    print(artifact_json)
+                else:
+                    Path(args.artifact_out).write_text(artifact_json, encoding="utf-8")

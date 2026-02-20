@@ -1,5 +1,5 @@
 """
-ORE v0.6.1 application entry point.
+ORE v0.9 application entry point.
 Loads environment and delegates to the CLI.
 """
 
