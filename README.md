@@ -29,6 +29,8 @@ python main.py "Explain the concept of an irreducible loop."
 | `python main.py "Question" --model llama3.2` | Use a specific model |
 | `python main.py --stream` or `-s` | Stream output token-by-token (optional, any mode) |
 | `python main.py --verbose` or `-v` | Show response metadata (ID, model, token counts) |
+| `python main.py "Question" --json` or `-j` | Output structured JSON (single-turn only) |
+| `echo "Question" \| python main.py` | Pipe a prompt via stdin |
 
 ## Layout
 
@@ -49,4 +51,4 @@ CI runs on push/PR to `main`: Python 3.10, `black --check`, then `pytest`. See `
 
 ---
 
-`--conversational` / `-c` enables a session-aware REPL; prior turns are visible to the reasoner via an explicit `Session`. `--save-session` and `--resume-session` (v0.4) add opt-in persistence to `~/.ore/sessions/`. Without these flags, behaviour is stateless. Aya's persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.
+`--conversational` / `-c` enables a session-aware REPL; prior turns are visible to the reasoner via an explicit `Session`. `--save-session` and `--resume-session` (v0.4) add opt-in persistence to `~/.ore/sessions/`. Without these flags, behaviour is stateless. v0.5 adds `--json` for structured output and stdin ingestion for piped prompts. Aya's persona is stored in `ore/prompts/aya.txt` and injected by the orchestrator in `ore/core.py`.

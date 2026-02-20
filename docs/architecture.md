@@ -1,6 +1,6 @@
-# ORE Architecture (v0.4)
+# ORE Architecture (v0.5)
 
-**Version**: v0.4 (Persistent sessions)
+**Version**: v0.5 (Composable output)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -8,7 +8,7 @@
 
 ## Execution Modes
 
-ORE v0.3 supports three modes, all sharing the same loop:
+ORE supports four modes, all sharing the same loop:
 
 | Mode | Flag | Session | History visible to reasoner |
 |------|------|---------|----------------------------|
@@ -17,7 +17,7 @@ ORE v0.3 supports three modes, all sharing the same loop:
 | Conversational REPL | `--conversational` / `-c` | `Session` | Yes |
 | Conversational (persisted) | `--save-session` / `--resume-session` | `Session` | Yes (implies `-c`) |
 
-**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden.
+**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`).
 
 **Mode precedence:** If `--save-session` or `--resume-session` is present → conversational. Else if `-c` → conversational. Else → stateless.
 
@@ -39,16 +39,16 @@ Any change that adds implicit history (storing state inside `ORE` without passin
 ## High-level Architecture
 
 - **Runtime flow**
-  - **User command** → `python main.py "prompt"` (or CLI options).
+  - **User command** → `python main.py "prompt"` (or CLI options; prompt may be piped via stdin when not a TTY).
   - **`main.py`** loads environment (`.env` via `python-dotenv`) and delegates to CLI.
   - **`ore.cli`**:
-    - Parses CLI arguments (`--interactive`, `--conversational`, `--model`, `--list-models`, `--stream`/`-s`, `--verbose`/`-v`).
+    - Parses CLI arguments (`--interactive`, `--conversational`, `--model`, `--list-models`, `--stream`/`-s`, `--verbose`/`-v`, `--json`/`-j`).
     - Validates mutual exclusivity of `--interactive` and `--conversational`.
     - Optionally lists available Ollama models.
     - Chooses a model (explicit `--model` or auto-selected default).
     - Instantiates the orchestrator `ORE` with an `AyaReasoner`.
     - Runs the appropriate mode:
-      - Single-turn: calls `engine.execute(prompt)` or `engine.execute_stream(prompt)` when `--stream`.
+      - Single-turn: calls `engine.execute(prompt)` or `engine.execute_stream(prompt)` when `--stream`; reads prompt from stdin when no positional arg and stdin is not a TTY; outputs JSON when `--json`.
       - Interactive loop (`-i`): calls `engine.execute(line)` or `engine.execute_stream(line)` per turn — no session.
       - Conversational loop (`-c`): creates a `Session()`, calls `engine.execute(...)` or `engine.execute_stream(...)` per turn.
     - Prints the assistant output; metadata only when `--verbose`.
@@ -111,7 +111,9 @@ Any change that adds implicit history (storing state inside `ORE` without passin
     - `--resume-session NAME` — load session from disk (implies `-c`).
     - `--stream` / `-s` flag — stream output token-by-token.
     - `--verbose` / `-v` flag — show metadata (default: hidden).
-  - Enforce mutual exclusivity of `--interactive` with `--conversational`, `--save-session`, and `--resume-session`.
+    - `--json` / `-j` flag — output structured JSON (single-turn only; incompatible with `--stream`).
+  - Ingest prompt from stdin when no positional prompt and stdin is not a TTY.
+  - Enforce mutual exclusivity of `--interactive` with `--conversational`, `--save-session`, and `--resume-session`; `--json` with `--stream` and REPL modes.
   - For conversational mode: create or load a `Session`, pass it to `engine.execute()` each turn, save eagerly if `--save-session` set.
   - Print per-response: `[AYA]:` content; `[Metadata]:` only when `--verbose`.
   - When `--stream`: drive `engine.execute_stream()`, print chunks as they arrive, update session after exhaustion.
@@ -268,7 +270,7 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
 - **`docs/invariants.md`** — Mechanical invariants (loop, session, CLI); testable guarantees.
-- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.3.1.
+- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.5.
 - **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models); no live Ollama required.
 - **`.github/workflows/ci.yml`** — CI: Python 3.10, black check, pytest.
 - **`main.py`** — Thin entry point.
@@ -297,5 +299,5 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
   - Keep `Reasoner` focused on "given messages → model call → Response".
 
 - **Add richer CLI commands**
-  - Streaming and verbose are implemented (v0.3.1). Further options: different personas, named sessions.
+  - Streaming, verbose, and JSON output are implemented (v0.3.1–v0.5). Further options: different personas, named sessions.
   - Options for choosing backends (`--backend ollama`, `--backend remote`).

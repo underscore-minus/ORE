@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import io
+import json
 from unittest.mock import patch
 
 import pytest
+
+from .conftest import FakeReasoner
 
 
 def _parse(args: list[str]) -> argparse.Namespace:
@@ -14,7 +18,7 @@ def _parse(args: list[str]) -> argparse.Namespace:
     # Instead, import the module and call parse_args via a subprocess-style check.
     from ore.cli import run  # noqa: F401 — ensures import works
 
-    parser = argparse.ArgumentParser(description="ORE v0.4 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.5 CLI")
     parser.add_argument("prompt", type=str, nargs="?", default=None)
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument("--list-models", action="store_true")
@@ -24,6 +28,7 @@ def _parse(args: list[str]) -> argparse.Namespace:
     parser.add_argument("--resume-session", type=str, default=None)
     parser.add_argument("--stream", "-s", action="store_true")
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--json", "-j", action="store_true")
     return parser.parse_args(args)
 
 
@@ -64,6 +69,10 @@ class TestArgParsing:
         ns = _parse(["--resume-session", "demo"])
         assert ns.resume_session == "demo"
 
+    def test_json_flag(self):
+        ns = _parse(["hi", "-j"])
+        assert ns.json
+
 
 class TestModeValidation:
     """Test the mutual-exclusivity rules enforced by cli.run()."""
@@ -96,8 +105,69 @@ class TestModeValidation:
                 run()
 
     def test_no_prompt_no_mode_rejected(self):
+        # TTY with no prompt → parser.error; avoid stdin read path
         with patch("ore.cli.argparse._sys.argv", ["ore"]):
+            with patch("ore.cli.sys.stdin.isatty", return_value=True):
+                with pytest.raises(SystemExit):
+                    from ore.cli import run
+
+                    run()
+
+    @pytest.mark.invariant
+    def test_json_and_stream_rejected(self):
+        with patch("ore.cli.argparse._sys.argv", ["ore", "hello", "--json", "--stream"]):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 
                 run()
+
+    @pytest.mark.invariant
+    def test_json_and_interactive_rejected(self):
+        with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "--json"]):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_json_and_conversational_rejected(self):
+        with patch("ore.cli.argparse._sys.argv", ["ore", "-c", "--json"]):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+
+class TestJsonOutput:
+    """Smoke tests for --json output and stdin ingestion."""
+
+    def test_json_output_keys(self, capsys):
+        """Single-turn with --json produces valid JSON with required keys."""
+        with patch("ore.cli.argparse._sys.argv", ["ore", "hello", "--json"]):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "id" in data
+        assert "model_id" in data
+        assert "content" in data
+        assert "timestamp" in data
+        assert "metadata" in data
+
+    def test_piped_stdin_single_turn(self, capsys):
+        """When stdin is non-TTY and no prompt arg, read prompt from stdin."""
+        fake_stdin = io.StringIO("piped prompt")
+        fake_stdin.isatty = lambda: False
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--json"]):
+            with patch("ore.cli.sys.stdin", fake_stdin):
+                with patch("ore.cli.AyaReasoner", FakeReasoner):
+                    with patch("ore.cli.default_model", return_value="fake-model"):
+                        from ore.cli import run
+
+                        run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["content"] == "fake response"

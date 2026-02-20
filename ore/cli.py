@@ -5,6 +5,7 @@ v0.3 adds --conversational (-c): a REPL where the session accumulates.
 """
 
 import argparse
+import json
 import sys
 
 from .core import ORE
@@ -15,6 +16,17 @@ from .types import Response, Session
 
 # Commands that exit any REPL mode (case-insensitive)
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
+
+
+def _print_json_response(response: Response) -> None:
+    """Serialize Response to JSON and print to stdout."""
+    print(json.dumps({
+        "id": response.id,
+        "model_id": response.model_id,
+        "content": response.content,
+        "timestamp": response.timestamp,
+        "metadata": response.metadata,
+    }))
 
 
 def _print_response(response: Response, verbose: bool = False) -> None:
@@ -49,7 +61,7 @@ def _stream_turn(
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.4 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.5 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -110,6 +122,12 @@ def run() -> None:
         action="store_true",
         help="Show response metadata (ID, model, token counts)",
     )
+    parser.add_argument(
+        "--json",
+        "-j",
+        action="store_true",
+        help="Output response as JSON (single-turn only; incompatible with --stream)",
+    )
     args = parser.parse_args()
 
     if args.interactive and args.conversational:
@@ -133,11 +151,26 @@ def run() -> None:
     _conversational = args.save_session or args.resume_session or args.conversational
     _repl_mode = args.interactive or _conversational
 
+    if args.json and args.stream:
+        parser.error("--json and --stream are mutually exclusive")
+    if args.json and _repl_mode:
+        parser.error(
+            "--json is single-turn only; incompatible with --interactive and --conversational"
+        )
+
     # Single-turn mode requires a prompt; REPL modes do not
     if not _repl_mode and args.prompt is None:
-        parser.error(
-            "prompt is required (or use --list-models, --interactive, or --conversational)"
-        )
+        if not sys.stdin.isatty():
+            piped = sys.stdin.read().strip()
+            if not piped:
+                parser.error(
+                    "stdin was empty; provide a prompt or pipe non-empty input"
+                )
+            args.prompt = piped
+        else:
+            parser.error(
+                "prompt is required (or use --list-models, --interactive, or --conversational)"
+            )
 
     model_id = args.model
     if model_id is None:
@@ -145,13 +178,13 @@ def run() -> None:
         if not model_id:
             print("No Ollama models found. Install one with e.g. ollama pull llama3.2")
             sys.exit(1)
-        if not _repl_mode:
+        if not _repl_mode and not args.json:
             print(f"Using model: {model_id}\n")
 
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.4 interactive (model: {model_id})")
+        print(f"ORE v0.5 interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -180,7 +213,7 @@ def run() -> None:
         else:
             session = Session()
         save_name = args.save_session
-        print(f"ORE v0.4 conversational (model: {model_id} | session: {session.id})")
+        print(f"ORE v0.5 conversational (model: {model_id} | session: {session.id})")
         if args.resume_session:
             print(f"  Resumed: {args.resume_session}")
         if save_name:
@@ -209,9 +242,13 @@ def run() -> None:
                 store.save(session, save_name)
 
     else:
-        print("--- ORE v0.4: Reasoning ---")
+        if not args.json:
+            print("--- ORE v0.5: Reasoning ---")
         if args.stream:
             _stream_turn(engine, args.prompt, None, args.verbose)
         else:
             response = engine.execute(args.prompt)
-            _print_response(response, verbose=args.verbose)
+            if args.json:
+                _print_json_response(response)
+            else:
+                _print_response(response, verbose=args.verbose)
