@@ -87,7 +87,9 @@ class TestModeValidation:
 
     @pytest.mark.invariant
     def test_interactive_with_resume_session_rejected(self):
-        with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "--resume-session", "x"]):
+        with patch(
+            "ore.cli.argparse._sys.argv", ["ore", "-i", "--resume-session", "x"]
+        ):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 

@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.4.x)
+# ORE Mechanical Invariants (v0.4.1)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 

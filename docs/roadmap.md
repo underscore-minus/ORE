@@ -14,6 +14,8 @@ Short notes on version intent. Not a feature backlog.
 
 **v0.4** — Persistent sessions. Opt-in file-based persistence via `--save-session <name>` and `--resume-session <name>`. Both imply conversational mode. Sessions stored as JSON in `~/.ore/sessions/`. Eager save after each turn. ORE core unchanged.
 
+**v0.4.1** — Hardening & invariants. Mechanical invariants documented in `docs/invariants.md`; tests enforce reasoner-once-per-turn, session append-only, CLI flag conflicts. CI fails if loop or state model is broken.
+
 ---
 
 Next features:

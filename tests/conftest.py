@@ -18,6 +18,7 @@ def pytest_configure(config: pytest.Config) -> None:
         "invariant: Tests that encode loop and state guarantees; must pass for CI.",
     )
 
+
 from ore.types import Message, Response, Session
 
 
