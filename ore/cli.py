@@ -20,13 +20,17 @@ _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
 
 def _print_json_response(response: Response) -> None:
     """Serialize Response to JSON and print to stdout."""
-    print(json.dumps({
-        "id": response.id,
-        "model_id": response.model_id,
-        "content": response.content,
-        "timestamp": response.timestamp,
-        "metadata": response.metadata,
-    }))
+    print(
+        json.dumps(
+            {
+                "id": response.id,
+                "model_id": response.model_id,
+                "content": response.content,
+                "timestamp": response.timestamp,
+                "metadata": response.metadata,
+            }
+        )
+    )
 
 
 def _print_response(response: Response, verbose: bool = False) -> None:

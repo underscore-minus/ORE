@@ -115,7 +115,9 @@ class TestModeValidation:
 
     @pytest.mark.invariant
     def test_json_and_stream_rejected(self):
-        with patch("ore.cli.argparse._sys.argv", ["ore", "hello", "--json", "--stream"]):
+        with patch(
+            "ore.cli.argparse._sys.argv", ["ore", "hello", "--json", "--stream"]
+        ):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 
