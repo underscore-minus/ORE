@@ -243,3 +243,32 @@ class TestBuildTargetsFromSkillRegistry:
         test_target = next(t for t in targets if t.name == "test-skill")
         assert "test keyword" in test_target.hints
         assert "another hint" in test_target.hints
+
+
+# ---------------------------------------------------------------------------
+# Bundled skills (repo's skills/ dir)
+# ---------------------------------------------------------------------------
+
+
+class TestPirateSkill:
+    """Tests for the bundled pirate skill; loads from repo skills/ dir."""
+
+    @pytest.fixture
+    def pirate_skill_dir(self) -> Path:
+        repo_root = Path(__file__).resolve().parent.parent
+        return repo_root / "skills" / "pirate"
+
+    def test_metadata(self, pirate_skill_dir: Path) -> None:
+        if not (pirate_skill_dir / "SKILL.md").exists():
+            pytest.skip("Bundled pirate skill not found (run from repo root)")
+        meta = load_skill_metadata(pirate_skill_dir)
+        assert meta.name == "pirate"
+        assert "arrr" in meta.hints
+
+    def test_instructions_body(self, pirate_skill_dir: Path) -> None:
+        if not (pirate_skill_dir / "SKILL.md").exists():
+            pytest.skip("Bundled pirate skill not found (run from repo root)")
+        body = load_skill_instructions(pirate_skill_dir)
+        assert "pirate speak" in body
+        assert "name:" not in body
+        assert "description:" not in body

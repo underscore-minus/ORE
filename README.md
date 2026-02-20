@@ -61,10 +61,22 @@ python main.py "Explain the concept of an irreducible loop."
 
 - **`ore/`** — Core package: `types`, `reasoner`, `core`, `cli`, `models`, `store`, `tools`, `gate`, `router`
 - **`ore/prompts/`** — Aya system persona (injected by orchestrator)
+- **`skills/`** — Bundled example skills (pirate, etc.); used when `ORE_SKILLS_ROOT` is set
 - **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router)
 - **`main.py`** — Entry point
 - **`docs/`** — Foundation, architecture, roadmap, invariants
 - **`requirements.txt`** — Runtime deps; **`requirements-dev.txt`** — pytest, black
+
+---
+
+## Bundled Skills / Development
+
+Skills live by default in `~/.ore/skills/`. To test bundled skills (e.g. `pirate`) from the repo, set `ORE_SKILLS_ROOT=./skills` in `.env`. Then:
+
+```bash
+python main.py --list-skills          # should show pirate
+python main.py "what is recursion?" --skill pirate
+```
 
 ---
 

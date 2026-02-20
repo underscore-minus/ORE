@@ -6,6 +6,7 @@ Skills are filesystem-based instruction modules: YAML frontmatter (metadata)
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Dict, List
 
@@ -13,8 +14,12 @@ import yaml
 
 from .types import RoutingTarget, SkillMetadata
 
-# Default skill directory, parallel to ~/.ore/sessions/
-DEFAULT_SKILLS_ROOT = Path.home() / ".ore" / "skills"
+# Default skill directory; ORE_SKILLS_ROOT env var overrides for dev/bundled skills
+DEFAULT_SKILLS_ROOT = (
+    Path(os.environ["ORE_SKILLS_ROOT"])
+    if "ORE_SKILLS_ROOT" in os.environ
+    else Path.home() / ".ore" / "skills"
+)
 
 SKILL_FILENAME = "SKILL.md"
 
