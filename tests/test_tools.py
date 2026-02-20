@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ore.gate import Permission
-from ore.tools import EchoTool, ReadFileTool, TOOL_REGISTRY
+from ore.tools import DateTimeTool, EchoTool, ReadFileTool, TOOL_REGISTRY
 
 
 class TestEchoTool:
@@ -73,6 +73,78 @@ class TestReadFileTool:
         assert "not found" in result.metadata["error_message"].lower()
 
 
+class TestDateTimeTool:
+    def test_name_and_description(self):
+        tool = DateTimeTool()
+        assert tool.name == "datetime"
+        assert len(tool.description) > 0
+        assert "timezone" in tool.description.lower()
+
+    def test_required_permissions_empty(self):
+        tool = DateTimeTool()
+        assert tool.required_permissions == frozenset()
+
+    def test_run_no_args_defaults_to_utc(self):
+        tool = DateTimeTool()
+        result = tool.run({})
+        assert result.status == "ok"
+        assert result.tool_name == "datetime"
+        assert "timezone=UTC" in result.output
+
+    def test_run_with_tz_arg(self):
+        tool = DateTimeTool()
+        result = tool.run({"tz": "America/New_York"})
+        assert result.status == "ok"
+        assert "timezone=America/New_York" in result.output
+
+    def test_run_invalid_tz_returns_error(self):
+        tool = DateTimeTool()
+        result = tool.run({"tz": "Not/Real"})
+        assert result.status == "error"
+        assert "error_message" in result.metadata
+        assert "Not/Real" in result.metadata["error_message"]
+        assert "tzdata" in result.metadata["error_message"]
+
+    def test_output_contains_expected_keys(self):
+        tool = DateTimeTool()
+        result = tool.run({})
+        assert result.status == "ok"
+        for key in ("date=", "time=", "weekday=", "timezone=", "iso="):
+            assert key in result.output
+
+    def test_run_with_format_arg(self):
+        tool = DateTimeTool()
+        result = tool.run({"format": "%Y/%m/%d"})
+        assert result.status == "ok"
+        assert "formatted=" in result.output
+
+    def test_routing_hints_nonempty(self):
+        tool = DateTimeTool()
+        hints = tool.routing_hints()
+        assert len(hints) > 0
+        assert any("time" in h for h in hints)
+
+    def test_extract_args_iana_tz_from_prompt(self):
+        tool = DateTimeTool()
+        args = tool.extract_args("what time is it in America/New_York")
+        assert args.get("tz") == "America/New_York"
+
+    def test_extract_args_utc_from_prompt(self):
+        tool = DateTimeTool()
+        args = tool.extract_args("what is the current time in UTC")
+        assert args.get("tz") == "UTC"
+
+    def test_extract_args_no_iana_name_returns_empty(self):
+        # City-only or abbreviation names are not extracted (IANA-only policy)
+        tool = DateTimeTool()
+        assert tool.extract_args("what time is it in London") == {}
+        assert tool.extract_args("current time in EST") == {}
+
+    def test_extract_args_no_in_phrase_returns_empty(self):
+        tool = DateTimeTool()
+        assert tool.extract_args("what time is it") == {}
+
+
 class TestToolRegistry:
     def test_echo_registered(self):
         assert "echo" in TOOL_REGISTRY
@@ -81,6 +153,10 @@ class TestToolRegistry:
     def test_read_file_registered(self):
         assert "read-file" in TOOL_REGISTRY
         assert TOOL_REGISTRY["read-file"].name == "read-file"
+
+    def test_datetime_registered(self):
+        assert "datetime" in TOOL_REGISTRY
+        assert TOOL_REGISTRY["datetime"].name == "datetime"
 
     def test_registry_lookup_returns_tool_instance(self):
         tool = TOOL_REGISTRY["echo"]

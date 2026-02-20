@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .gate import Permission
 from .types import ToolResult
@@ -181,8 +183,98 @@ class ReadFileTool(Tool):
             )
 
 
+# IANA timezone pattern: one or more segments separated by '/' (e.g. America/New_York)
+_IANA_TZ_PATTERN = re.compile(r"\b([A-Za-z_]+(?:/[A-Za-z_]+)+|UTC|GMT)\b")
+
+
+class DateTimeTool(Tool):
+    """Returns current date, time, weekday, and timezone. No permissions required."""
+
+    @property
+    def name(self) -> str:
+        return "datetime"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Return current date, time, weekday, and timezone. "
+            "Args: tz=<IANA timezone> (default UTC), format=<strftime> (default ISO 8601). "
+            "No permissions required."
+        )
+
+    @property
+    def required_permissions(self) -> frozenset[Permission]:
+        return frozenset()
+
+    def routing_hints(self) -> List[str]:
+        return [
+            "what time is it",
+            "current time",
+            "what's the date",
+            "today's date",
+            "current date",
+            "what day is it",
+            "what time",
+            "date and time",
+            "what date",
+        ]
+
+    def extract_args(self, prompt: str) -> Dict[str, str]:
+        """
+        Extract IANA timezone from prompt phrases like 'in America/New_York' or 'in UTC'.
+        Matches only explicit IANA-format names (Continent/City) or UTC/GMT.
+        Returns empty dict if no IANA name is found; run() defaults to UTC.
+        """
+        # Only extract after 'in' to avoid false positives from other tokens
+        in_phrase = re.search(r"\bin\s+(\S+)", prompt, re.IGNORECASE)
+        if in_phrase:
+            candidate = in_phrase.group(1).rstrip(".,?!")
+            if _IANA_TZ_PATTERN.fullmatch(candidate):
+                return {"tz": candidate}
+        return {}
+
+    def run(self, args: Dict[str, str]) -> ToolResult:
+        tz_name = args.get("tz", "UTC").strip() or "UTC"
+        fmt = args.get("format", "").strip()
+
+        try:
+            tz = ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, KeyError):
+            return ToolResult(
+                tool_name=self.name,
+                output="",
+                status="error",
+                metadata={
+                    "error_message": (
+                        f"Unknown or unavailable timezone: '{tz_name}'. "
+                        "Use an IANA name (e.g. UTC, America/New_York). "
+                        "If the system timezone database is missing, install tzdata: "
+                        "pip install tzdata"
+                    )
+                },
+            )
+
+        now = datetime.now(tz)
+        lines = [
+            f"date={now.strftime('%Y-%m-%d')}",
+            f"time={now.strftime('%H:%M:%S')}",
+            f"weekday={now.strftime('%A')}",
+            f"timezone={tz_name}",
+            f"iso={now.isoformat()}",
+        ]
+        if fmt:
+            lines.append(f"formatted={now.strftime(fmt)}")
+
+        return ToolResult(
+            tool_name=self.name,
+            output="\n".join(lines),
+            status="ok",
+        )
+
+
 # Registry for CLI dispatch: name -> Tool instance
 TOOL_REGISTRY: Dict[str, Tool] = {
     EchoTool().name: EchoTool(),
     ReadFileTool().name: ReadFileTool(),
+    DateTimeTool().name: DateTimeTool(),
 }

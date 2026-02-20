@@ -19,10 +19,11 @@ from ore.types import RoutingTarget
 class TestBuildTargetsFromRegistry:
     def test_builds_list_from_registry(self):
         targets = build_targets_from_registry(TOOL_REGISTRY)
-        assert len(targets) == 2
+        assert len(targets) == 3
         names = {t.name for t in targets}
         assert "echo" in names
         assert "read-file" in names
+        assert "datetime" in names
 
     def test_each_target_has_hints_from_tool(self):
         targets = build_targets_from_registry(TOOL_REGISTRY)
