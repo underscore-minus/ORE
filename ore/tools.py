@@ -1,13 +1,15 @@
 """
 Tool interface and built-in tools (v0.6).
 Tools are pre-reasoning context injectors; they run before the reasoner.
+v0.7 adds optional routing_hints and extract_args for intent-based routing.
 """
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 from .gate import Permission
 from .types import ToolResult
@@ -39,6 +41,17 @@ class Tool(ABC):
         """Execute the tool. Args are key=value from --tool-arg. Return ToolResult."""
         ...
 
+    def routing_hints(self) -> List[str]:
+        """Keywords/phrases for the router to match (v0.7). Override in subclasses."""
+        return []
+
+    def extract_args(self, prompt: str) -> Dict[str, str]:
+        """
+        Parse tool arguments from natural-language prompt (v0.7).
+        Override in subclasses. Default: no extraction.
+        """
+        return {}
+
 
 class EchoTool(Tool):
     """Echoes provided args back as output. No permissions required."""
@@ -55,6 +68,15 @@ class EchoTool(Tool):
     def required_permissions(self) -> frozenset[Permission]:
         return frozenset()
 
+    def routing_hints(self) -> List[str]:
+        # "repeat this line" mirrors TEST_ROUTING_TARGET so the CLI and tests agree
+        return ["echo", "repeat", "say back", "repeat back", "repeat this line"]
+
+    def extract_args(self, prompt: str) -> Dict[str, str]:
+        """Use the full prompt as the message to echo (stripped)."""
+        msg = prompt.strip()
+        return {"msg": msg if msg else "(no message)"}
+
     def run(self, args: Dict[str, str]) -> ToolResult:
         if not args:
             return ToolResult(
@@ -68,6 +90,18 @@ class EchoTool(Tool):
             output="\n".join(lines),
             status="ok",
         )
+
+
+# Regex for path extraction: quoted (double or single) or unquoted path-like token.
+# Quoted takes precedence; then a word that may contain / or ~ (path-like).
+_READ_FILE_QUOTED_PATH = re.compile(r'["\']([^"\']+)["\']')
+_READ_FILE_UNQUOTED_PATH = re.compile(
+    r"(?:read\s+(?:the\s+)?file\s+(?:at\s+)?|file\s+|path\s+)(\S+(?:\s+\S+)*?)(?:\s+please)?\s*$",
+    re.IGNORECASE,
+)
+_READ_FILE_SINGLE_TOKEN = re.compile(
+    r"(?:read|show|cat|open)\s+(?:the\s+)?(?:file\s+)?(\S+)"
+)
 
 
 class ReadFileTool(Tool):
@@ -84,6 +118,36 @@ class ReadFileTool(Tool):
     @property
     def required_permissions(self) -> frozenset[Permission]:
         return frozenset({Permission.FILESYSTEM_READ})
+
+    def routing_hints(self) -> List[str]:
+        return [
+            "read file",
+            "read the file",
+            "show file",
+            "show the file",
+            "cat file",
+            "open file",
+        ]
+
+    def extract_args(self, prompt: str) -> Dict[str, str]:
+        """
+        Extract file path from prompt. Tries: quoted path, then phrase after
+        'read file' / 'file' / 'path', then single path-like token.
+        """
+        text = prompt.strip()
+        # 1. Quoted path (double or single quotes)
+        m = _READ_FILE_QUOTED_PATH.search(text)
+        if m:
+            return {"path": m.group(1).strip()}
+        # 2. Phrase at end: "read the file at /path" or "file /path"
+        m = _READ_FILE_UNQUOTED_PATH.search(text)
+        if m:
+            return {"path": m.group(1).strip()}
+        # 3. Single path-like token after read/show/cat/open
+        m = _READ_FILE_SINGLE_TOKEN.search(text)
+        if m:
+            return {"path": m.group(1).strip()}
+        return {}
 
     def run(self, args: Dict[str, str]) -> ToolResult:
         path_str = args.get("path", "").strip()

@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.6)
+# ORE Mechanical Invariants (v0.7)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 
@@ -65,6 +65,17 @@ For each `ORE.execute()` or `ORE.execute_stream()` invocation:
 - When the gate denies a tool, `tool.run()` is never called. Permission check happens before execution.
 
 **How we test:** `tests/test_core.py` — `test_tool_results_not_stored_in_session`, `test_reasoner_still_called_once_with_tools`; `tests/test_gate.py` — `test_denied_tool_never_executes` (invariant); `tests/test_cli.py` — `test_tool_gate_denied_exits_cleanly`.
+
+---
+
+## Routing (v0.7)
+
+- **One reasoner call per turn** — Routing does not introduce a second LLM/reasoner call. Routing is rule-based (non-LLM).
+- **Routing decision visible** — Chosen route (tool, skill, or fallback) is printed to stderr; with `--json`, the `routing` key is included in stdout payload.
+- **Session and loop unchanged** — Session remains append-only; only user and assistant messages are appended. Existing invariant tests continue to pass.
+- **Router does not mutate targets** — `Router.route(prompt, targets)` must not mutate the `targets` list or its items.
+
+**How we test:** `tests/test_router.py` — `test_route_does_not_mutate_targets_list` (invariant). Routing behaviour: `tests/test_router.py` (RuleRouter, build_targets); `tests/test_cli.py` — `TestRouteCli`, `test_route_and_tool_rejected` (invariant).
 
 ---
 

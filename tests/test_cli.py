@@ -33,6 +33,7 @@ def _parse(args: list[str]) -> argparse.Namespace:
     parser.add_argument("--tool-arg", action="append", default=[])
     parser.add_argument("--list-tools", action="store_true")
     parser.add_argument("--grant", action="append", default=[])
+    parser.add_argument("--route", action="store_true")
     return parser.parse_args(args)
 
 
@@ -143,6 +144,18 @@ class TestModeValidation:
 
                 run()
 
+    @pytest.mark.invariant
+    def test_route_and_tool_rejected(self):
+        """--route and --tool are mutually exclusive."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hi", "--route", "--tool", "echo"],
+        ):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
 
 class TestJsonOutput:
     """Smoke tests for --json output and stdin ingestion."""
@@ -244,3 +257,62 @@ class TestToolCli:
         out = capsys.readouterr().out
         data = json.loads(out)
         assert data["content"] == "fake response"
+
+
+class TestRouteCli:
+    """Tests for v0.7 --route (intent-based tool selection)."""
+
+    def test_route_with_matching_prompt_runs_tool(self, capsys):
+        """--route with prompt that matches echo: routing on stderr, response on stdout."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "say back hello world", "--route"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        captured = capsys.readouterr()
+        assert "[AYA]:" in captured.out
+        assert "fake response" in captured.out
+        assert "[Route]:" in captured.err
+        assert "echo" in captured.err
+
+    def test_route_with_non_matching_prompt_fallback(self, capsys):
+        """--route with no match: fallback message on stderr, reasoner only."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "what is the capital of France", "--route"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        captured = capsys.readouterr()
+        assert "[AYA]:" in captured.out
+        assert (
+            "No match" in captured.err
+            or "reasoner only" in captured.err
+            or "fallback" in captured.err.lower()
+        )
+
+    def test_route_with_json_includes_routing_key(self, capsys):
+        """--route with --json: stdout is valid JSON with 'routing' key."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "say back hi", "--route", "--json"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "content" in data
+        assert "routing" in data
+        assert data["routing"]["target"] == "echo"
+        assert "confidence" in data["routing"]
+        assert "reasoning" in data["routing"]

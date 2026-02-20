@@ -5,20 +5,22 @@ v0.3 adds --conversational (-c): a REPL where the session accumulates.
 v0.4 adds --save-session / --resume-session for opt-in file persistence.
 v0.5 adds --json / -j for structured output and stdin ingestion for piped prompts.
 v0.6 adds --tool / --tool-arg / --list-tools / --grant for tool & gate framework.
+v0.7 adds --route for intent-based tool selection (routing info to stderr).
 """
 
 import argparse
 import json
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .core import ORE
 from .gate import Gate, GateError, Permission
 from .models import default_model, fetch_models
 from .reasoner import AyaReasoner
+from .router import RuleRouter, build_targets_from_registry
 from .store import FileSessionStore
 from .tools import TOOL_REGISTRY
-from .types import Response, Session, ToolResult
+from .types import Response, RoutingDecision, Session, ToolResult
 
 # Commands that exit any REPL mode (case-insensitive)
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
@@ -62,19 +64,79 @@ def _get_tool_results(
         sys.exit(1)
 
 
-def _print_json_response(response: Response) -> None:
-    """Serialize Response to JSON and print to stdout."""
-    print(
-        json.dumps(
-            {
-                "id": response.id,
-                "model_id": response.model_id,
-                "content": response.content,
-                "timestamp": response.timestamp,
-                "metadata": response.metadata,
-            }
-        )
+def _route_and_get_tool_results(
+    prompt: str,
+    gate: Gate,
+    verbose: bool,
+    confidence_threshold: float = 0.5,
+) -> Tuple[Optional[List[ToolResult]], RoutingDecision]:
+    """
+    Run router on prompt; if a tool is selected, run it through gate and return
+    [result] + decision. Otherwise return (None, decision). All routing info
+    is printed to stderr so stdout stays clean for JSON.
+    """
+    targets = build_targets_from_registry(TOOL_REGISTRY)
+    decision = RuleRouter(confidence_threshold=confidence_threshold).route(
+        prompt, targets
     )
+    # Always print routing to stderr (visible, non-silent)
+    if decision.target is None:
+        print(
+            f"[Route]: No match, using reasoner only. {decision.reasoning}",
+            file=sys.stderr,
+        )
+        return None, decision
+    print(
+        f"[Route]: {decision.target} (confidence: {decision.confidence:.2f}) — {decision.reasoning}",
+        file=sys.stderr,
+    )
+    if verbose:
+        print(
+            f"  routing_id={decision.id} target_type={decision.target_type} args={decision.args}",
+            file=sys.stderr,
+        )
+    tool = TOOL_REGISTRY[decision.target]
+    args = tool.extract_args(prompt) or decision.args
+    decision = RoutingDecision(
+        target=decision.target,
+        target_type=decision.target_type,
+        confidence=decision.confidence,
+        args=args,
+        reasoning=decision.reasoning,
+        id=decision.id,
+        timestamp=decision.timestamp,
+    )
+    try:
+        result = gate.run(tool, args)
+        return [result], decision
+    except GateError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+
+def _print_json_response(
+    response: Response,
+    routing: Optional[RoutingDecision] = None,
+) -> None:
+    """Serialize Response to JSON and print to stdout. If routing given, include it."""
+    payload = {
+        "id": response.id,
+        "model_id": response.model_id,
+        "content": response.content,
+        "timestamp": response.timestamp,
+        "metadata": response.metadata,
+    }
+    if routing is not None:
+        payload["routing"] = {
+            "target": routing.target,
+            "target_type": routing.target_type,
+            "confidence": routing.confidence,
+            "args": routing.args,
+            "reasoning": routing.reasoning,
+            "id": routing.id,
+            "timestamp": routing.timestamp,
+        }
+    print(json.dumps(payload))
 
 
 def _print_response(response: Response, verbose: bool = False) -> None:
@@ -110,7 +172,7 @@ def _stream_turn(
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.6.1 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.7 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -203,8 +265,22 @@ def run() -> None:
         metavar="PERM",
         help="Grant a permission for this run (repeatable); e.g. filesystem-read, network",
     )
+    parser.add_argument(
+        "--route",
+        action="store_true",
+        help="Route prompt to a tool by intent (v0.7); mutually exclusive with --tool",
+    )
+    parser.add_argument(
+        "--route-threshold",
+        type=float,
+        default=0.5,
+        metavar="FLOAT",
+        help="Confidence threshold for --route (0.0–1.0, default 0.5); lower = more permissive",
+    )
     args = parser.parse_args()
 
+    if args.route and args.tool:
+        parser.error("--route and --tool are mutually exclusive")
     if args.interactive and args.conversational:
         parser.error("--interactive and --conversational are mutually exclusive")
     if args.interactive and (args.save_session or args.resume_session):
@@ -286,7 +362,7 @@ def run() -> None:
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.6.1 interactive (model: {model_id})")
+        print(f"ORE v0.7 interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -296,7 +372,12 @@ def run() -> None:
                 break
             if line.lower() in _REPL_EXIT_COMMANDS:
                 break
-            tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
+            if args.route:
+                tool_results, _ = _route_and_get_tool_results(
+                    line, gate, args.verbose, confidence_threshold=args.route_threshold
+                )
+            else:
+                tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
             print("--- ORE: Reasoning ---")
             if args.stream:
                 _stream_turn(
@@ -318,7 +399,7 @@ def run() -> None:
         else:
             session = Session()
         save_name = args.save_session
-        print(f"ORE v0.6.1 conversational (model: {model_id} | session: {session.id})")
+        print(f"ORE v0.7 conversational (model: {model_id} | session: {session.id})")
         if args.resume_session:
             print(f"  Resumed: {args.resume_session}")
         if save_name:
@@ -333,7 +414,17 @@ def run() -> None:
                     break
                 if line.lower() in _REPL_EXIT_COMMANDS:
                     break
-                tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
+                if args.route:
+                    tool_results, _ = _route_and_get_tool_results(
+                        line,
+                        gate,
+                        args.verbose,
+                        confidence_threshold=args.route_threshold,
+                    )
+                else:
+                    tool_results = _get_tool_results(
+                        args.tool, args.tool_arg or None, gate
+                    )
                 print("--- ORE: Reasoning ---")
                 if args.stream:
                     _stream_turn(
@@ -352,9 +443,18 @@ def run() -> None:
                 store.save(session, save_name)
 
     else:
-        tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
+        routing_decision: Optional[RoutingDecision] = None
+        if args.route:
+            tool_results, routing_decision = _route_and_get_tool_results(
+                args.prompt,
+                gate,
+                args.verbose,
+                confidence_threshold=args.route_threshold,
+            )
+        else:
+            tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
         if not args.json:
-            print("--- ORE v0.6.1: Reasoning ---")
+            print("--- ORE v0.7: Reasoning ---")
         if args.stream:
             _stream_turn(
                 engine, args.prompt, None, args.verbose, tool_results=tool_results
@@ -362,6 +462,6 @@ def run() -> None:
         else:
             response = engine.execute(args.prompt, tool_results=tool_results)
             if args.json:
-                _print_json_response(response)
+                _print_json_response(response, routing=routing_decision)
             else:
                 _print_response(response, verbose=args.verbose)

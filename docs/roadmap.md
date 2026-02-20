@@ -24,32 +24,15 @@ Short notes on version intent. Not a feature backlog.
 
 **v0.6.1** — Black formatting fix for CI; version bump to 0.6.1.
 
+**v0.7** — Routing / Intent Detection (implemented). Opt-in `--route`; `--route-threshold FLOAT` to tune confidence (default 0.5); `RuleRouter` with keyword/phrase matching; `RoutingTarget` / `RoutingDecision`; routing info to stderr; `--json` includes `routing` key; fallback when no match or below threshold; invariant: router does not mutate targets. `TEST_ROUTING_TARGET` exported for deterministic test setups.
+
 ---
 
-Next features (v0.7 → v1.0):
-
-**v0.7** — Routing / Intent Detection
-
-Goal: Enable intelligent routing of messages to skills or tools based on user input or programmatic signals.
-Problem solved: v0.6 requires explicit tool selection; v0.5+ lacks dynamic, user-intent-driven orchestration.
-Changes:
-
-Introduce routing layer: user input → explicit intent OR inferred intent.
-
-Integrate with skills (instructions) or tools when routing triggers.
-
-Failover for low-confidence or novel cases.
-Tests / Validation:
-
-Unit tests for routing decisions (explicit vs inferred intent).
-
-Integration tests: sample prompts routed correctly to correct skills or tools.
-
-CI enforcement: loop and session invariants still hold.
+Next features (v0.8 → v1.0):
 
 **v0.8** — Skill / Instruction Activation
 
-Goal: Modularize agent behaviors via instructions or “skills.”
+Goal: Modularize agent behaviors via instructions or "skills."
 Problem solved: v0.7 routing exists but skills are not yet first-class, reusable, or filesystem-based.
 Changes:
 
@@ -65,6 +48,8 @@ Skill activation triggers correct instructions and outputs.
 Session immutability and reasoner call invariants enforced.
 
 Integration tests: multiple skills used in one workflow.
+
+---
 
 **v0.9** — Multi-Agent / Parallel Orchestration
 

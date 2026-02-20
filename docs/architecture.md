@@ -1,6 +1,6 @@
-# ORE Architecture (v0.6)
+# ORE Architecture (v0.7)
 
-**Version**: v0.6 (Tool & Gate Framework)
+**Version**: v0.7 (Routing / Intent Detection)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -17,7 +17,7 @@ ORE supports four modes, all sharing the same loop:
 | Conversational REPL | `--conversational` / `-c` | `Session` | Yes |
 | Conversational (persisted) | `--save-session` / `--resume-session` | `Session` | Yes (implies `-c`) |
 
-**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`). **v0.6:** `--tool NAME` runs a built-in tool before reasoning (single tool per turn); `--tool-arg KEY=VALUE` (repeatable) passes arguments; `--list-tools` lists tools and exits; `--grant PERM` (repeatable) grants a permission (default-deny).
+**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`). **v0.6:** `--tool NAME` runs a built-in tool before reasoning (single tool per turn); `--tool-arg KEY=VALUE` (repeatable) passes arguments; `--list-tools` lists tools and exits; `--grant PERM` (repeatable) grants a permission (default-deny). **v0.7:** `--route` selects a tool by intent (keyword matching); mutually exclusive with `--tool`; routing info printed to stderr; fallback when no match or below confidence threshold. `--route-threshold FLOAT` overrides the default confidence threshold (default 0.5; lower = more permissive).
 
 **Mode precedence:** If `--save-session` or `--resume-session` is present → conversational. Else if `-c` → conversational. Else → stateless.
 
@@ -42,8 +42,9 @@ Any change that adds implicit history (storing state inside `ORE` without passin
   - **User command** → `python main.py "prompt"` (or CLI options; prompt may be piped via stdin when not a TTY).
   - **`main.py`** loads environment (`.env` via `python-dotenv`) and delegates to CLI.
   - **`ore.cli`**:
-    - Parses CLI arguments (`--interactive`, `--conversational`, `--model`, `--list-models`, `--stream`/`-s`, `--verbose`/`-v`, `--json`/`-j`).
+    - Parses CLI arguments (including `--tool`, `--tool-arg`, `--list-tools`, `--grant` for v0.6; `--interactive`, `--conversational`, `--model`, `--list-models`, `--stream`/`-s`, `--verbose`/`-v`, `--json`/`-j`).
     - Validates mutual exclusivity of `--interactive` and `--conversational`.
+    - For `--tool`: resolves tool from registry, runs through gate, passes `tool_results` to engine.
     - Optionally lists available Ollama models.
     - Chooses a model (explicit `--model` or auto-selected default).
     - Instantiates the orchestrator `ORE` with an `AyaReasoner`.
@@ -93,8 +94,9 @@ Any change that adds implicit history (storing state inside `ORE` without passin
   - `run` (CLI entry function).
   - `ORE` (orchestrator engine).
   - `Reasoner`, `AyaReasoner` (reasoner abstraction + default implementation).
-  - `Message`, `Response`, `Session` (data contracts).
+  - `Message`, `Response`, `Session`, `ToolResult` (data contracts).
   - `SessionStore`, `FileSessionStore` (session persistence).
+  - `Tool`, `TOOL_REGISTRY`, `Gate`, `GateError`, `Permission` (v0.6 tools & gate).
   - `fetch_models`, `default_model` (Ollama model utilities).
 
 ### `ore/cli.py`
@@ -112,14 +114,16 @@ Any change that adds implicit history (storing state inside `ORE` without passin
     - `--stream` / `-s` flag — stream output token-by-token.
     - `--verbose` / `-v` flag — show metadata (default: hidden).
     - `--json` / `-j` flag — output structured JSON (single-turn only; incompatible with `--stream`).
+    - `--tool NAME`, `--tool-arg KEY=VALUE` (repeatable), `--list-tools`, `--grant PERM` (repeatable) — v0.6 tool & gate.
   - Ingest prompt from stdin when no positional prompt and stdin is not a TTY.
   - Enforce mutual exclusivity of `--interactive` with `--conversational`, `--save-session`, and `--resume-session`; `--json` with `--stream` and REPL modes.
+  - For `--tool`: resolve tool from `TOOL_REGISTRY`, parse `--tool-arg` into dict, run through `Gate` (exit on `GateError`), pass `tool_results` to `engine.execute()` / `engine.execute_stream()`.
   - For conversational mode: create or load a `Session`, pass it to `engine.execute()` each turn, save eagerly if `--save-session` set.
   - Print per-response: `[AYA]:` content; `[Metadata]:` only when `--verbose`.
   - When `--stream`: drive `engine.execute_stream()`, print chunks as they arrive, update session after exhaustion.
 - **Why it exists**:
   - Cleanly separates how users run ORE from how reasoning is performed.
-  - Owns session lifecycle for conversational mode.
+  - Owns session lifecycle for conversational mode; owns tool dispatch and gate for v0.6.
 
 ### `ore/core.py`
 
@@ -128,7 +132,7 @@ Any change that adds implicit history (storing state inside `ORE` without passin
   - Hold a reference to a `Reasoner` implementation.
   - Load Aya's **system prompt** from `ore/prompts/aya.txt`.
   - Construct the message list for each turn:
-    - `[system]` + `session.messages` (if any) + `[user]`
+    - `[system]` + tool result messages (if any; v0.6) + `session.messages` (if any) + `[user]`
   - Delegate to `self.reasoner.reason(messages)` and return its `Response`; or when streaming, to `self.reasoner.stream_reason(messages)` via `execute_stream()`.
   - If a session was provided, append the user and assistant messages after the call.
 - **Why it exists**:
@@ -269,6 +273,35 @@ Tools are **pre-reasoning context injectors**: a tool runs first (via CLI `--too
 
 ---
 
+## Routing (v0.7)
+
+Routing selects a tool (or later skill) from the user prompt by intent, without an extra LLM call. **Opt-in** via `--route`; mutually exclusive with `--tool`.
+
+### Design
+
+- **No extra reasoner call.** The router is rule-based (`RuleRouter`): keyword/phrase matching against each target's `routing_hints`. Same prompt + targets yields the same decision (deterministic).
+- **Generic targets.** `RoutingTarget` has `name`, `target_type` ("tool" or "skill"), `description`, `hints`. `build_targets_from_registry(TOOL_REGISTRY)` builds the list; v0.8 skills can be added as targets without changing the router interface.
+- **Visibility.** Routing decision is always printed to **stderr** (stdout stays clean for `--json`). With `--verbose`, full decision fields are shown. With `--json`, the JSON payload includes a `routing` key (target, confidence, reasoning, args).
+- **Fallback.** If no hint matches or confidence is below threshold (default 0.5), the decision is "fallback" and the turn runs with reasoner only; a clear message is printed to stderr.
+
+### Flow
+
+When `--route` is set and `--tool` is not: CLI builds targets from the registry, runs `RuleRouter(confidence_threshold).route(prompt, targets)` (threshold from `--route-threshold`, default 0.5), prints the decision to stderr, then either runs the selected tool through the gate (and passes `tool_results` to the engine) or runs the engine with no tool results. Core (`ore/core.py`) is unchanged.
+
+### Modules
+
+- **`ore/router.py`** — `Router` ABC; `RuleRouter(confidence_threshold)`; `build_targets_from_registry(registry)`; `DEFAULT_CONFIDENCE_THRESHOLD` (0.5).
+- **`ore/types.RoutingTarget`** — `name`, `target_type`, `description`, `hints`.
+- **`ore/types.RoutingDecision`** — `target`, `target_type`, `confidence`, `args`, `reasoning`, `id`, `timestamp`.
+- **`ore/tools.py`** — Tools may implement `routing_hints()` and `extract_args(prompt)` for routing and argument extraction from natural language.
+
+### Invariants
+
+- One reasoner call per turn (routing does not add a second call).
+- Routing does not mutate the targets list (enforced by test `test_route_does_not_mutate_targets_list`).
+
+---
+
 ## External Dependencies and Requirements
 
 ### Python and environment
@@ -296,18 +329,19 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
 - **`docs/invariants.md`** — Mechanical invariants (loop, session, CLI); testable guarantees.
-- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.6.
-- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate); no live Ollama required.
+- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.7.
+- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router); no live Ollama required.
 - **`.github/workflows/ci.yml`** — CI: Python 3.10, black check, pytest.
 - **`main.py`** — Thin entry point.
 - **`ore/cli.py`** — CLI UX, mode dispatch, session lifecycle.
 - **`ore/core.py`** — Orchestration: loop construction, persona injection, session threading.
 - **`ore/reasoner.py`** — Reasoner abstraction and Ollama backend.
 - **`ore/models.py`** — Model discovery and default selection.
-- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`, `ToolResult`).
+- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`, `ToolResult`, `RoutingTarget`, `RoutingDecision`).
 - **`ore/store.py`** — Session persistence (`SessionStore`, `FileSessionStore`).
-- **`ore/tools.py`** — Tool interface and built-in tools (`Tool`, `EchoTool`, `ReadFileTool`, `TOOL_REGISTRY`).
+- **`ore/tools.py`** — Tool interface and built-in tools (`Tool`, `EchoTool`, `ReadFileTool`, `TOOL_REGISTRY`); optional `routing_hints()`, `extract_args(prompt)`.
 - **`ore/gate.py`** — Permission gate for tool execution (`Permission`, `Gate`, `GateError`).
+- **`ore/router.py`** — Routing layer (`Router`, `RuleRouter`, `build_targets_from_registry`).
 - **`ore/__init__.py`** — Package API surface.
 
 ---

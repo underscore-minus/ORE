@@ -4,7 +4,7 @@ List-first schema to support context windows and memory.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import time
 import uuid
@@ -87,3 +87,34 @@ class ToolResult:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RoutingTarget:
+    """
+    A routable target (tool or skill) for the router (v0.7).
+
+    Used to keep routing generic: same structure for tools now and skills in v0.8.
+    """
+
+    name: str
+    target_type: str  # "tool" or "skill"
+    description: str
+    hints: List[str]  # Keywords/phrases for rule-based matching
+
+
+@dataclass
+class RoutingDecision:
+    """
+    Result of routing: which target (if any) was selected and why.
+
+    Turn-scoped; visible in CLI/output. target is None for fallback (reasoner only).
+    """
+
+    target: Optional[str]  # Name of selected target, or None for fallback
+    target_type: str  # "tool", "skill", or "fallback"
+    confidence: float  # 0.0 to 1.0; deterministic for RuleRouter
+    args: Dict[str, str]  # Extracted args for the target
+    reasoning: str  # Human-readable explanation for the decision
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    timestamp: float = field(default_factory=time.time)
