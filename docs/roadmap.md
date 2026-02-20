@@ -18,30 +18,11 @@ Short notes on version intent. Not a feature backlog.
 
 **v0.4.2** — invariants.md: canonical terminology (`ORE.execute()`), non-invariants section (determinism, token count, semantic consistency).
 
+**v0.5** — Composable output. Add --json / -j for single-turn structured output. Support stdin ingestion for piped prompts. REPL and conversational flows unchanged. Core loop, reasoner, types, store unchanged.
+
 ---
 
-Next features:
-
-ORE Roadmap (v0.5 → v1.0)
-**v0.5** — Composable Output / Structured Instructions
-
-Goal: Enable programmatic handling of outputs and prepare for skills/intent routing.
-Problem solved: v0.4 lacks structured output, making downstream automation and tool integration brittle.
-Changes:
-
-Add --json / -j for single-turn structured output.
-
-Support stdin ingestion for piped prompts.
-
-Keep REPL / conversational flows unchanged.
-
-No changes to core loop, reasoner, types, or store.
-Tests / Validation:
-
-Smoke tests for JSON output: single-turn, piped, streaming conflicts.
-
-Confirm REPL and conversational modes unaffected.
-Result: CLI output can now be consumed by scripts, pipelines, and automation without semantic drift.
+Next features (v0.6 → v1.0):
 
 **v0.6** — Tool & Gate Framework
 

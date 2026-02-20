@@ -151,7 +151,7 @@ Any change that adds implicit history (storing state inside `ORE` without passin
     - Overrides `stream_reason()` for real token-by-token streaming via Ollama's streaming API.
 - **Why it exists**:
   - Decouples how we talk to an LLM from the orchestrator.
-  - Unchanged in v0.3 — the reasoner only receives a list of messages; it has no knowledge of sessions.
+  - Unchanged since v0.3 — the reasoner only receives a list of messages; it has no knowledge of sessions.
 
 ### `ore/models.py`
 
@@ -291,8 +291,8 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
   - Provide `reason(messages: List[Message]) -> Response`.
   - Wire it in via `ORE(NewReasoner(...))`.
 
-- **Session persistence (v0.4 — implemented)**
-  - See the *Session persistence* section below.
+- **Session persistence (implemented in v0.4)**
+  - See the *Session persistence* section above.
 
 - **Add tools (future version)**
   - Extend `ORE.execute` to inject tool-call messages into the message list.

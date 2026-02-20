@@ -1,5 +1,5 @@
 """
-Core data contracts for ORE v0.3.
+Core data contracts for ORE.
 List-first schema to support context windows and memory.
 """
 

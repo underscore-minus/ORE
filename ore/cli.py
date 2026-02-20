@@ -2,6 +2,8 @@
 CLI layer: argument parsing and printing the reasoning output.
 v0.2 adds an interactive loop (REPL); each turn remains stateless.
 v0.3 adds --conversational (-c): a REPL where the session accumulates.
+v0.4 adds --save-session / --resume-session for opt-in file persistence.
+v0.5 adds --json / -j for structured output and stdin ingestion for piped prompts.
 """
 
 import argparse

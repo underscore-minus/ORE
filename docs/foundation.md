@@ -1,4 +1,4 @@
-ORE — Foundation Document (v0.4)
+ORE — Foundation Document (v0.5)
 Purpose
 
 ORE (Orchestrated Reasoning Engine) is a minimal, local-first reasoning engine built around an irreducible interaction loop:
@@ -54,10 +54,10 @@ v0.1 assumes local execution via Ollama.
 
 Remote backends are an extension, not a replacement.
 
-What Exists in v0.4
+What Exists in v0.5
 Runtime Model
 
-Three execution modes, all sharing the same irreducible loop:
+Four execution modes, all sharing the same irreducible loop:
 
 Single-turn (default): system + user → reasoner → response. Stateless.
 
@@ -96,7 +96,7 @@ CLI
 
 ore/cli.py
 Handles arguments, model selection, and stdout/stderr.
-Does not reason. Owns session creation for --conversational and persistence for --save-session / --resume-session.
+Does not reason. Owns session creation for --conversational and persistence for --save-session / --resume-session. Also owns stdin ingestion and JSON output via --json.
 
 Orchestrator
 
@@ -184,6 +184,7 @@ v0.1 — The loop exists (single-turn, stateless).
 v0.2 — Temporal continuity (interactive REPL, still stateless per turn).
 v0.3 — Cognitive continuity (session history, explicit state).
 v0.4 — Persistent sessions (opt-in, file-based; CLI flags only; core unchanged).
+v0.5 — Composable output (structured JSON, stdin ingestion; CLI only; core unchanged).
 
 Guiding Question
 
