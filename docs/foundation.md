@@ -8,6 +8,8 @@ Input → Reasoner → Output
 This document defines the non-negotiable foundations of ORE.
 Any agent, human or AI, working on ORE must preserve these invariants unless a version explicitly breaks them.
 
+Mechanical invariants and how they are tested are documented in [docs/invariants.md](invariants.md).
+
 Core Invariants (Must Hold)
 
 Irreducible loop

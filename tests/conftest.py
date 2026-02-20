@@ -9,6 +9,15 @@ from typing import Generator, List
 import pytest
 
 from ore.reasoner import Reasoner
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers",
+        "invariant: Tests that encode loop and state guarantees; must pass for CI.",
+    )
+
 from ore.types import Message, Response, Session
 
 
@@ -19,12 +28,16 @@ class FakeReasoner(Reasoner):
         self.canned = canned
         self.model_id = model_id
         self.last_messages: List[Message] = []
+        self.reason_call_count: int = 0
+        self.stream_reason_call_count: int = 0
 
     def reason(self, messages: List[Message]) -> Response:
+        self.reason_call_count += 1
         self.last_messages = list(messages)
         return Response(content=self.canned, model_id=self.model_id)
 
     def stream_reason(self, messages: List[Message]) -> Generator[str, None, Response]:
+        self.stream_reason_call_count += 1
         self.last_messages = list(messages)
         # Yield canned response word-by-word to simulate streaming
         words = self.canned.split(" ")

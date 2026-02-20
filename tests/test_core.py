@@ -89,6 +89,31 @@ class TestOREExecute:
         for msg in session.messages:
             assert msg.role != "system"
 
+    @pytest.mark.invariant
+    def test_reasoner_called_exactly_once_per_execute(
+        self, fake_reasoner: FakeReasoner, sample_session: Session
+    ):
+        """Invariant: one reasoner.reason() call per ORE.execute()."""
+        engine = ORE(fake_reasoner)
+        engine.execute("hi")
+        assert fake_reasoner.reason_call_count == 1
+        engine.execute("bye")
+        assert fake_reasoner.reason_call_count == 2
+        engine.execute("third", session=sample_session)
+        assert fake_reasoner.reason_call_count == 3
+
+    @pytest.mark.invariant
+    def test_session_append_only_no_reorder_or_delete(
+        self, fake_reasoner: FakeReasoner, sample_session: Session
+    ):
+        """Invariant: session is append-only; no reorder, no delete of existing messages."""
+        engine = ORE(fake_reasoner)
+        initial_ids = [m.id for m in sample_session.messages]
+        initial_len = len(sample_session.messages)
+        engine.execute("next", session=sample_session)
+        assert len(sample_session.messages) == initial_len + 2
+        assert [m.id for m in sample_session.messages[:initial_len]] == initial_ids
+
 
 class TestOREExecuteStream:
     def test_stream_yields_chunks(self, fake_reasoner: FakeReasoner):
@@ -116,3 +141,31 @@ class TestOREExecuteStream:
         assert len(session.messages) == 2
         assert session.messages[0].content == "hi"
         assert session.messages[1].content == "fake response"
+
+    @pytest.mark.invariant
+    def test_reasoner_called_exactly_once_per_execute_stream(
+        self, fake_reasoner: FakeReasoner, sample_session: Session
+    ):
+        """Invariant: one reasoner.stream_reason() call per ORE.execute_stream()."""
+        engine = ORE(fake_reasoner)
+        gen = engine.execute_stream("hi")
+        try:
+            while True:
+                next(gen)
+        except StopIteration:
+            pass
+        assert fake_reasoner.stream_reason_call_count == 1
+        gen = engine.execute_stream("bye")
+        try:
+            while True:
+                next(gen)
+        except StopIteration:
+            pass
+        assert fake_reasoner.stream_reason_call_count == 2
+        gen = engine.execute_stream("third", session=sample_session)
+        try:
+            while True:
+                next(gen)
+        except StopIteration:
+            pass
+        assert fake_reasoner.stream_reason_call_count == 3

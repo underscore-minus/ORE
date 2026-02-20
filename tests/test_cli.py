@@ -68,6 +68,7 @@ class TestArgParsing:
 class TestModeValidation:
     """Test the mutual-exclusivity rules enforced by cli.run()."""
 
+    @pytest.mark.invariant
     def test_interactive_and_conversational_rejected(self):
         """run() should exit when both -i and -c are given."""
         with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "-c"]):
@@ -76,8 +77,17 @@ class TestModeValidation:
 
                 run()
 
+    @pytest.mark.invariant
     def test_interactive_with_save_session_rejected(self):
         with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "--save-session", "x"]):
+            with pytest.raises(SystemExit):
+                from ore.cli import run
+
+                run()
+
+    @pytest.mark.invariant
+    def test_interactive_with_resume_session_rejected(self):
+        with patch("ore.cli.argparse._sys.argv", ["ore", "-i", "--resume-session", "x"]):
             with pytest.raises(SystemExit):
                 from ore.cli import run
 

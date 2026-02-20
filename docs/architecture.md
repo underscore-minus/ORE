@@ -267,6 +267,7 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 
 - **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
+- **`docs/invariants.md`** — Mechanical invariants (loop, session, CLI); testable guarantees.
 - **`docs/architecture.md`** (this file) — High-level architectural overview for v0.3.1.
 - **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models); no live Ollama required.
 - **`.github/workflows/ci.yml`** — CI: Python 3.10, black check, pytest.
