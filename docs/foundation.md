@@ -57,7 +57,7 @@ v0.1 assumes local execution via Ollama.
 
 Remote backends are an extension, not a replacement.
 
-What Exists in v0.6
+What Exists in v0.8
 
 Runtime Model
 
@@ -72,6 +72,10 @@ Conversational REPL (--conversational / -c): many turns in one process with a sh
 Persistent sessions (--save-session NAME / --resume-session NAME): opt-in file-based persistence in ~/.ore/sessions/. Both imply conversational mode. Sessions saved eagerly after each turn.
 
 Tools (v0.6): optional pre-reasoning step. One or more tools can be run via CLI (--tool NAME, --tool-arg KEY=VALUE). A gate enforces permissions (--grant PERM; default-deny). Tool results are injected into the message list for that turn only; they are never stored in the session. One reasoner call per turn is preserved.
+
+Routing (v0.7): opt-in intent detection via `--route`. Rule-based keyword matching selects a tool or skill from the prompt. No extra LLM call. Decision visible on stderr and in `--json`. Fallback when no match or below confidence threshold.
+
+Skills (v0.8): filesystem-based instruction modules at `~/.ore/skills/`. Activated via `--skill NAME` or `--route`. Three-level loading: metadata (always), instructions (on activation), resources (on demand). Injected as `role="system"` messages before tool results. Turn-scoped — never stored in the session. One reasoner call per turn preserved.
 
 Session
 
@@ -125,7 +129,7 @@ Discovery and default-selection logic for Ollama models.
 Data Contracts
 
 ore/types.py
-Defines Message, Response, Session, and ToolResult (v0.6).
+Defines Message, Response, Session, ToolResult (v0.6), RoutingTarget, RoutingDecision (v0.7), and SkillMetadata (v0.8).
 
 ore/store.py
 SessionStore abstraction and FileSessionStore for opt-in persistence.
@@ -135,6 +139,12 @@ Tool interface and built-in tools (e.g. EchoTool, ReadFileTool). TOOL_REGISTRY f
 
 ore/gate.py (v0.6)
 Permission gate: default-deny; checks tool required_permissions before execution.
+
+ore/router.py (v0.7)
+Rule-based intent router. Selects a tool or skill from the prompt via keyword matching.
+
+ore/skills.py (v0.8)
+Skill loader and registry. Filesystem-based skills with YAML frontmatter and three-level loading.
 
 Reasoner Contract (Critical)
 
@@ -156,7 +166,7 @@ Not an agent framework
 
 Not a persistent memory system (opt-in session persistence in v0.4; default remains in-memory)
 
-Not a full tool runtime (v0.6 adds a minimal tool & gate layer; routing and skill-based tool selection come later)
+Not a full tool runtime (v0.6 adds a minimal tool & gate layer; v0.7 adds intent-based routing; v0.8 adds skill activation)
 
 Not a chatbot shell (ORE is an orchestration primitive with a single loop and explicit state)
 

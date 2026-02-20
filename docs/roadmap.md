@@ -1,71 +1,204 @@
 # ORE Roadmap
 
-Short notes on version intent. Not a feature backlog.
+## Completed
+
+**v0.1 — The Loop Exists**
+Single-turn, stateless. Input → Reasoner → Output.
+The irreducible primitive.
+
+**v0.2 — Temporal Continuity**
+Interactive REPL. Many turns, one process. Still stateless per turn.
+
+**v0.2.1 — Semantics Lock**
+"Interactive" explicitly defined as non-conversational. No memory, no
+accumulation, no hidden context. Documentation only.
+
+**v0.3 — Cognitive Continuity**
+Session history. Explicit state. Append-only. No hidden accumulation.
+
+**v0.3.1 — Streaming and Metadata**
+Token-by-token streaming. Verbose metadata flag. Response schema locked.
+
+**v0.4 — Persistent Sessions**
+Opt-in file-based persistence. `--save-session` / `--resume-session`.
+Core unchanged. CLI owns lifecycle.
+
+**v0.4.1 — Hardening and Invariants**
+Mechanical invariants documented in `docs/invariants.md`. Tests enforce
+reasoner-once-per-turn, session append-only, CLI flag conflicts. CI fails
+if loop or state model is broken.
+
+**v0.4.2 — Invariants Polish**
+Canonical terminology (`ORE.execute()`). Non-invariants section (determinism,
+token count, semantic consistency).
+
+**v0.5 — Composable Output**
+`--json` flag for single-turn structured output. Stdin as signal source.
+The pipe exists. ORE becomes chainable by humans.
+
+**v0.6 — Tool Execution + Gate**
+Tools inject real-world context into the loop. Default-deny permission gate.
+The loop does things in the world.
+
+**v0.6.1 — Formatting Fix**
+Black formatting fix for CI; version bump to 0.6.1.
+
+**v0.7 — Routing / Intent Detection**
+Rule-based router. Keyword/phrase matching. No extra LLM call.
+Decision visible on stderr and in JSON. Human remains override authority.
+
+**v0.7.1 — Design Decisions Document**
+Six locked design decisions for skill activation documented in
+`docs/skills.md` before any code written. Interface before implementation.
+
+**v0.8 — Skill / Instruction Activation**
+Filesystem-based skills. SKILL.md + YAML frontmatter. Three-level progressive
+disclosure: metadata → instructions → resources. Skills routable via existing
+router. Turn-scoped, session-pure, one reasoner call preserved.
 
 ---
 
-**v0.2** — Temporal continuity without cognitive continuity. The user can run many turns in one process (interactive REPL), but each turn is isolated; there is no conversation memory or shared context.
+## In Progress
 
-**v0.2.1** — Semantics lock: "interactive" is explicitly defined as non-conversational (no memory, no accumulation, no hidden context). Documentation only.
-
-**v0.3** — Cognitive continuity. The first version where the reasoner sees prior turns. A `Session` holds the ordered message history; `ORE.execute()` accepts an optional session argument. Without a session, behaviour is identical to v0.2. A new `--conversational` / `-c` CLI flag activates the session-aware REPL. Session state lives in memory only; no persistence to disk.
-
-**v0.3.1** — QoL: optional streaming (`--stream` / `-s`) and metadata toggle (`--verbose` / `-v`). CLI only. Core loop unchanged. `Response.metadata` schema locked.
-
-**v0.4** — Persistent sessions. Opt-in file-based persistence via `--save-session <name>` and `--resume-session <name>`. Both imply conversational mode. Sessions stored as JSON in `~/.ore/sessions/`. Eager save after each turn. ORE core unchanged.
-
-**v0.4.1** — Hardening & invariants. Mechanical invariants documented in `docs/invariants.md`; tests enforce reasoner-once-per-turn, session append-only, CLI flag conflicts. CI fails if loop or state model is broken.
-
-**v0.4.2** — invariants.md: canonical terminology (`ORE.execute()`), non-invariants section (determinism, token count, semantic consistency).
-
-**v0.5** — Composable output. Add --json / -j for single-turn structured output. Support stdin ingestion for piped prompts. REPL and conversational flows unchanged. Core loop, reasoner, types, store unchanged.
-
-**v0.6** — Tool & Gate Framework. Tool interface (`ore/tools.py`) with EchoTool and ReadFileTool; gate (`ore/gate.py`) for default-deny permissions; `--tool`, `--tool-arg`, `--list-tools`, `--grant` CLI flags. Tool results injected pre-reasoning, turn-scoped (never stored in session). One reasoner call per turn preserved; denied tools never execute.
-
-**v0.6.1** — Black formatting fix for CI; version bump to 0.6.1.
-
-**v0.7** — Routing / Intent Detection (implemented). Opt-in `--route`; `--route-threshold FLOAT` to tune confidence (default 0.5); `RuleRouter` with keyword/phrase matching; `RoutingTarget` / `RoutingDecision`; routing info to stderr; `--json` includes `routing` key; fallback when no match or below threshold; invariant: router does not mutate targets. `TEST_ROUTING_TARGET` exported for deterministic test setups.
-
-**v0.7.1** — Design decisions document (`docs/skills.md`). Six locked decisions before v0.8 implementation: injection order, skill message role, `ORE.execute()` API, simultaneous tool + skill semantics, Level 3 resource scope (passive injection only), routing decisions in REPL (ephemeral by design). `docs/foundation.md` updated with "Not a script execution runtime" constraint.
-
-**v0.8** — Skill / Instruction Activation (implemented). Filesystem-based skills at `~/.ore/skills/` (SKILL.md + YAML frontmatter). Three-level loading: metadata always (Level 1), instructions on activation (Level 2), resource files on-demand (Level 3). `ORE.execute()` and `execute_stream()` accept `skill_context: Optional[List[str]]`; injected as `role="system"` before tool results. `--skill NAME` activates a skill explicitly; `--list-skills` lists discovered skills; `--route` merges tool + skill targets and dispatches by `target_type`. Path traversal blocked in `load_skill_resource`. Session and reasoner-once-per-turn invariants preserved. `pyyaml>=6.0` added to `requirements.txt`. New module `ore/skills.py`; `SkillMetadata` added to `ore/types.py`.
+**feature/datetime-tool — Parked**
+DateTime tool complete and tested. Held pending v1.0 feature decisions.
+Branch: `feature/datetime-tool`.
 
 ---
 
-**v0.9** — Multi-Agent / Parallel Orchestration
+## Remaining Engine Versions
 
-Goal: Scale orchestration across multiple reasoning engines.
-Problem solved: v0.8 supports skills and routing, but single-agent only; parallel reasoning, aggregation, or QA pipelines are impossible.
-Changes:
+**v0.9 — Chainable Execution Artifacts**
+*The last engine primitive.*
 
-Introduce multi-agent message orchestration (fan-out/fan-in).
+Problem solved: humans currently act as the glue between ORE executions.
+They interpret output, decide how to re-prompt, and route context forward.
+v0.9 removes humans as routers by making ORE's output self-describing and
+re-executable.
 
-Merge outputs or vote on conflicting results.
+Definition: one ORE execution produces an artifact that can be fed directly
+into another ORE execution as input — without reinterpretation, mutation,
+or human involvement.
 
-Session and invariant rules extended to multi-agent workflows.
-Tests / Validation:
+Key constraints:
+- Chaining happens via data, not runtime coupling
+- ORE does not call or orchestrate other ORE instances
+- ORE produces an artifact; what consumes it is platform concern
+- Engine remains ignorant of what happens after output
 
-Simulated parallel agents with overlapping skills.
+What the artifact must contain:
+- The input that produced it
+- The output it produced
+- Sufficient context to reconstruct the execution
+- Optional continuation signal (declared, never inferred)
+- Version identifier for forward compatibility
 
-Ensure session append-only + single reasoner call per agent per turn.
+What this unlocks without new engine features:
+- Pipelines
+- DAGs
+- Fan-out / fan-in
+- Agent swarms
+- Review loops
+- CI-style reasoning
+- Scheduled execution
+- Distributed execution
 
-**v1.0** — Stable, CLI-First Orchestration Platform
+All of that becomes platform. The engine is done.
 
-Goal: Provide a production-ready, extensible CLI loop for complex orchestration.
-Problem solved: All previous features exist but were incremental; v1.0 locks them into a coherent, predictable, testable system.
-Changes:
+Invariants preserved:
+- One reasoner call per turn
+- No hidden state
+- Session append-only semantics
+- CLI remains sole execution authority
 
-Documented, enforceable invariants via CI.
+---
 
-Fully modular skills, tools, routing, multi-agent orchestration.
+**v0.9.1 — Interface Lock**
+*The stability declaration.*
 
-CLI-only interface still guarantees reproducibility and scripting.
+Problem solved: a powerful tool is not infrastructure until its contracts
+are frozen. v0.9.1 is where ORE stops being a personal project and becomes
+something dependable.
 
-Extensible for future GUI or API layers without touching the core loop.
-Tests / Validation:
+What gets locked:
+- CLI flags and their semantics
+- JSON output schema
+- Execution contracts (what goes in, what comes out)
+- Failure modes and exit codes
+- All invariants, formally documented
 
-Full invariant + integration suite passes.
+Rules after this point:
+- Nothing changes without a version bump
+- Additions are allowed; mutations are not
+- Every contract has a test that enforces it
 
-Multi-agent, skill, and tool orchestration tested end-to-end.
+---
 
-CLI reproducibility validated: JSON, REPL, piped input, persistence.
+**v1.0 — The Mainframe**
+*Structurally complete. Not feature complete.*
+
+ORE at v1.0 is a stable, chainable, multi-backend reasoning engine with
+explicit state, auditable actions, locked interfaces, and self-describing
+output. It is ready to have a suit built on top of it.
+
+At this point:
+- Agents are libraries
+- Workflows are configs
+- UIs are skins
+- Backends are replaceable
+- Orchestration is external
+
+The engine does not grow. It hosts growth.
+
+---
+
+## Post v1.0 — Platform
+
+Everything below this line is the suit, not the mainframe.
+These are not engine versions. They are products built on ORE.
+
+**P1 — Multi-Backend Adapter**
+LiteLLM integration. `--backend` flag. Claude, OpenAI, Mistral alongside
+Ollama. Local-first default preserved. Backend is a detail, not a dependency.
+
+**P2 — Thinking Model Support**
+`--thinking` flag. Reasoning trace separated from final response.
+Displayed as `[THINKING]:` on stderr. Clean response to stdout.
+Warning on stderr if no thinking tokens produced. `--strict-thinking`
+exits 1 for scripting use.
+
+**P3 — Web Search + DateTime Tools**
+Merge `feature/datetime-tool`. Add web search tool.
+Real-world context available without leaving the loop.
+
+**P4 — ORE as Library**
+`import ore` as a first-class use case.
+Programmatic access to the loop without the CLI.
+Foundation for the node-based workflow builder.
+
+**P5 — Frontend / Visual Shell**
+The robotic suit.
+Node-based workflow builder. Agent construction interface.
+Real-time execution visibility. The mainframe becomes accessible
+to non-technical pilots.
+
+---
+
+## Design Principles (Permanent)
+
+These do not change at any version:
+
+1. **The loop is irreducible.** Input → Reasoner → Output. No hidden steps.
+2. **State is explicit.** If it exists, it is named and visible.
+3. **Complexity lives at the edges.** Core stays boring.
+4. **One reasoner call per turn.** Always.
+5. **The engine produces objects, not behavior.**
+6. **Backward clarity beats forward cleverness.**
+7. **Each version adds one thing.**
+
+---
+
+*The film which produces the movie is the AI.*
+*The projector is the ORE.*
+*The mainframe runs the suit.*
+*The pilot decides.*
