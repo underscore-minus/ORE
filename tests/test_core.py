@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from ore.core import ORE, load_aya_system_prompt
-from ore.types import Session
+from ore.types import Session, ToolResult
 
 from .conftest import FakeReasoner
 
@@ -113,6 +113,44 @@ class TestOREExecute:
         engine.execute("next", session=sample_session)
         assert len(sample_session.messages) == initial_len + 2
         assert [m.id for m in sample_session.messages[:initial_len]] == initial_ids
+
+    def test_tool_results_injected_before_session(
+        self, fake_reasoner: FakeReasoner, sample_session: Session
+    ):
+        """With tool_results, message order is [system, tool_msg, session..., user]."""
+        engine = ORE(fake_reasoner)
+        tr = ToolResult(tool_name="echo", output="tool out", status="ok")
+        engine.execute("user prompt", session=sample_session, tool_results=[tr])
+        msgs = fake_reasoner.last_messages
+        assert msgs[0].role == "system"
+        assert msgs[1].role == "user"
+        assert "[Tool:echo]" in msgs[1].content
+        assert "tool out" in msgs[1].content
+        assert msgs[2].role == "user"
+        assert msgs[2].content == "hello"
+        assert msgs[3].role == "assistant"
+        assert msgs[4].role == "user"
+        assert msgs[4].content == "user prompt"
+
+    def test_tool_results_not_stored_in_session(self, fake_reasoner: FakeReasoner):
+        """Tool result messages are turn-scoped; session only gets user + assistant."""
+        engine = ORE(fake_reasoner)
+        session = Session()
+        tr = ToolResult(tool_name="echo", output="x", status="ok")
+        engine.execute("hi", session=session, tool_results=[tr])
+        assert len(session.messages) == 2
+        assert session.messages[0].content == "hi"
+        assert session.messages[1].content == "fake response"
+        for m in session.messages:
+            assert "[Tool:" not in m.content
+
+    @pytest.mark.invariant
+    def test_reasoner_still_called_once_with_tools(self, fake_reasoner: FakeReasoner):
+        """Invariant: one reasoner call per execute() even when tool_results present."""
+        engine = ORE(fake_reasoner)
+        tr = ToolResult(tool_name="echo", output="y", status="ok")
+        engine.execute("hi", tool_results=[tr])
+        assert fake_reasoner.reason_call_count == 1
 
 
 class TestOREExecuteStream:

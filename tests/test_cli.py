@@ -18,7 +18,7 @@ def _parse(args: list[str]) -> argparse.Namespace:
     # Instead, import the module and call parse_args via a subprocess-style check.
     from ore.cli import run  # noqa: F401 — ensures import works
 
-    parser = argparse.ArgumentParser(description="ORE v0.5 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.6 CLI")
     parser.add_argument("prompt", type=str, nargs="?", default=None)
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument("--list-models", action="store_true")
@@ -29,6 +29,10 @@ def _parse(args: list[str]) -> argparse.Namespace:
     parser.add_argument("--stream", "-s", action="store_true")
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--json", "-j", action="store_true")
+    parser.add_argument("--tool", type=str, default=None)
+    parser.add_argument("--tool-arg", action="append", default=[])
+    parser.add_argument("--list-tools", action="store_true")
+    parser.add_argument("--grant", action="append", default=[])
     return parser.parse_args(args)
 
 
@@ -164,6 +168,73 @@ class TestJsonOutput:
         fake_stdin = io.StringIO("piped prompt")
         fake_stdin.isatty = lambda: False
         with patch("ore.cli.argparse._sys.argv", ["ore", "--json"]):
+            with patch("ore.cli.sys.stdin", fake_stdin):
+                with patch("ore.cli.AyaReasoner", FakeReasoner):
+                    with patch("ore.cli.default_model", return_value="fake-model"):
+                        from ore.cli import run
+
+                        run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["content"] == "fake response"
+
+
+class TestToolCli:
+    """Tests for v0.6 --tool / --list-tools / --grant."""
+
+    def test_list_tools_flag(self, capsys):
+        """--list-tools prints tool names and exits 0."""
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--list-tools"]):
+            with pytest.raises(SystemExit) as exc_info:
+                from ore.cli import run
+
+                run()
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "echo" in out
+        assert "read-file" in out
+        assert "no permissions" in out or "requires" in out
+
+    def test_tool_gate_denied_exits_cleanly(self, capsys):
+        """--tool read-file without --grant exits 1 with stderr message."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--tool", "read-file", "--tool-arg", "path=/tmp/x"],
+        ):
+            with patch("ore.cli.default_model", return_value="fake-model"):
+                with pytest.raises(SystemExit) as exc_info:
+                    from ore.cli import run
+
+                    run()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "denied" in err.lower() or "permission" in err.lower()
+        assert "read-file" in err.lower() or "filesystem" in err.lower()
+
+    def test_tool_with_json_output(self, capsys):
+        """--tool echo with --json produces valid JSON (tool runs, then reasoner)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "summarize", "--tool", "echo", "--tool-arg", "msg=hello", "--json"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "content" in data
+        assert data["model_id"] == "fake-model"
+
+    def test_tool_with_piped_stdin(self, capsys):
+        """Tool runs; piped prompt used as user input; no crash."""
+        fake_stdin = io.StringIO("piped prompt")
+        fake_stdin.isatty = lambda: False
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "--tool", "echo", "--tool-arg", "x=y", "--json"],
+        ):
             with patch("ore.cli.sys.stdin", fake_stdin):
                 with patch("ore.cli.AyaReasoner", FakeReasoner):
                     with patch("ore.cli.default_model", return_value="fake-model"):

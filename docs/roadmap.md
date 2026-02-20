@@ -20,33 +20,16 @@ Short notes on version intent. Not a feature backlog.
 
 **v0.5** — Composable output. Add --json / -j for single-turn structured output. Support stdin ingestion for piped prompts. REPL and conversational flows unchanged. Core loop, reasoner, types, store unchanged.
 
+**v0.6** — Tool & Gate Framework. Tool interface (`ore/tools.py`) with EchoTool and ReadFileTool; gate (`ore/gate.py`) for default-deny permissions; `--tool`, `--tool-arg`, `--list-tools`, `--grant` CLI flags. Tool results injected pre-reasoning, turn-scoped (never stored in session). One reasoner call per turn preserved; denied tools never execute.
+
 ---
 
-Next features (v0.6 → v1.0):
-
-**v0.6** — Tool & Gate Framework
-
-Goal: Introduce controlled external interactions, preserving security and privacy.
-Problem solved: v0.5 can produce structured output but cannot safely call external systems.
-Changes:
-
-Introduce “tool interface” abstraction for safe side effects.
-
-Tools operate only through explicit CLI flags or routing.
-
-Gate system enforces permission checks, network control, and access boundaries.
-Tests / Validation:
-
-Unit tests for tool execution, permission enforcement.
-
-CI invariant checks for reasoner calls and session immutability.
-
-Smoke test: structured output triggers tool via gate; blocked access fails gracefully.
+Next features (v0.7 → v1.0):
 
 **v0.7** — Routing / Intent Detection
 
 Goal: Enable intelligent routing of messages to skills or tools based on user input or programmatic signals.
-Problem solved: v0.6 requires explicit selection; v0.5+ lacks dynamic, user-intent-driven orchestration.
+Problem solved: v0.6 requires explicit tool selection; v0.5+ lacks dynamic, user-intent-driven orchestration.
 Changes:
 
 Introduce routing layer: user input → explicit intent OR inferred intent.

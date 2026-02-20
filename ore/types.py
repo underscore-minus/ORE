@@ -66,3 +66,24 @@ class Session:
     messages: List[Message] = field(default_factory=list)
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: float = field(default_factory=time.time)
+
+
+@dataclass
+class ToolResult:
+    """
+    Result of a single tool execution (v0.6).
+
+    Turn-scoped: never stored in Session or persisted.
+
+    Known metadata keys (documented, not enforced):
+      execution_time_ms   (float) — wall-clock time for tool.run() in ms.
+      checked_permissions (list[str]) — permission names evaluated by the gate.
+      error_message      (str) — present when status == "error"; human-readable.
+    """
+
+    tool_name: str
+    output: str
+    status: str  # "ok" or "error"
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    timestamp: float = field(default_factory=time.time)
+    metadata: Dict[str, Any] = field(default_factory=dict)

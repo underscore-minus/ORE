@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.4.2)
+# ORE Mechanical Invariants (v0.6)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 
@@ -49,6 +49,25 @@ For each `ORE.execute()` or `ORE.execute_stream()` invocation:
 
 ---
 
+## Tool & Gate Invariants (v0.6)
+
+**Tool results are turn-scoped.**
+
+- Tool result messages are injected into the message list for the current turn only. They are **never** stored in the session and **never** persisted to disk.
+- Only user and assistant messages are appended to the session after each turn.
+
+**Gate is default-deny.**
+
+- With no `--grant` flags, only tools that require no permissions (e.g. `echo`) may run. Permissioned tools (e.g. `read-file`) raise `GateError` and the CLI exits with code 1.
+
+**Denied tools never execute.**
+
+- When the gate denies a tool, `tool.run()` is never called. Permission check happens before execution.
+
+**How we test:** `tests/test_core.py` — `test_tool_results_not_stored_in_session`, `test_reasoner_still_called_once_with_tools`; `tests/test_gate.py` — `test_denied_tool_never_executes` (invariant); `tests/test_cli.py` — `test_tool_gate_denied_exits_cleanly`.
+
+---
+
 ## CLI Flag Conflict Invariants
 
 **`--interactive` is mutually exclusive with conversational/session flags.**
@@ -75,4 +94,4 @@ This prevents future contributors from treating these as upgradable invariants.
 
 ## Tests Marked as Invariant
 
-Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py` and `tests/test_cli.py` for the full suite.
+Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py`, `tests/test_cli.py`, and `tests/test_gate.py` for the full suite.

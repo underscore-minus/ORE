@@ -6,10 +6,10 @@ Aya persona is injected here, not in the Reasoner.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Generator, List, Optional
 
 from .reasoner import Reasoner
-from .types import Message, Response, Session
+from .types import Message, Response, Session, ToolResult
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 AYA_PROMPT_PATH = PROMPTS_DIR / "aya.txt"
@@ -34,7 +34,12 @@ class ORE:
         self.reasoner = reasoner
         self.system_prompt = load_aya_system_prompt()
 
-    def execute(self, user_prompt: str, session: Optional[Session] = None) -> Response:
+    def execute(
+        self,
+        user_prompt: str,
+        session: Optional[Session] = None,
+        tool_results: Optional[List[ToolResult]] = None,
+    ) -> Response:
         """
         Run one turn of the irreducible loop.
 
@@ -46,11 +51,21 @@ class ORE:
             After the reasoner responds, the user and assistant messages are
             appended to the session so the next turn sees the full history.
 
-        The session is an explicit argument — there is no hidden state inside ORE.
+        With tool_results (v0.6): tool result messages are injected after system,
+        before session, in list order. Tool results are turn-scoped — never stored
+        in session. The session is an explicit argument — there is no hidden state.
         """
         user_msg = Message(role="user", content=user_prompt)
 
         messages = [Message(role="system", content=self.system_prompt)]
+        if tool_results:
+            for r in tool_results:
+                messages.append(
+                    Message(
+                        role="user",
+                        content=f"[Tool:{r.tool_name}]\n{r.output}",
+                    )
+                )
         if session is not None:
             messages += session.messages
         messages.append(user_msg)
@@ -65,15 +80,26 @@ class ORE:
         return response
 
     def execute_stream(
-        self, user_prompt: str, session: Optional[Session] = None
+        self,
+        user_prompt: str,
+        session: Optional[Session] = None,
+        tool_results: Optional[List[ToolResult]] = None,
     ) -> Generator[str, None, Response]:
         """
         Streaming variant: yields str chunks. Session is updated after exhaustion.
-        The final StopIteration carries the Response.
+        Tool results (v0.6) injected same as execute(); final StopIteration = Response.
         """
         user_msg = Message(role="user", content=user_prompt)
 
         messages = [Message(role="system", content=self.system_prompt)]
+        if tool_results:
+            for r in tool_results:
+                messages.append(
+                    Message(
+                        role="user",
+                        content=f"[Tool:{r.tool_name}]\n{r.output}",
+                    )
+                )
         if session is not None:
             messages += session.messages
         messages.append(user_msg)

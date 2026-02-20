@@ -1,6 +1,6 @@
-# ORE Architecture (v0.5)
+# ORE Architecture (v0.6)
 
-**Version**: v0.5 (Composable output)
+**Version**: v0.6 (Tool & Gate Framework)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -17,7 +17,7 @@ ORE supports four modes, all sharing the same loop:
 | Conversational REPL | `--conversational` / `-c` | `Session` | Yes |
 | Conversational (persisted) | `--save-session` / `--resume-session` | `Session` | Yes (implies `-c`) |
 
-**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`).
+**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`). **v0.6:** `--tool NAME` runs a built-in tool before reasoning (single tool per turn); `--tool-arg KEY=VALUE` (repeatable) passes arguments; `--list-tools` lists tools and exits; `--grant PERM` (repeatable) grants a permission (default-deny).
 
 **Mode precedence:** If `--save-session` or `--resume-session` is present → conversational. Else if `-c` → conversational. Else → stateless.
 
@@ -243,6 +243,32 @@ The session **name** (CLI flag, filename) is a user-facing handle. `Session.id` 
 
 ---
 
+## Tool & Gate (v0.6)
+
+Tools are **pre-reasoning context injectors**: a tool runs first (via CLI `--tool`), its output is injected into the turn's message list, then the reasoner runs exactly once. **Tool results are turn-scoped** — they are never stored in the session or persisted.
+
+### Execution model
+
+- **Message list with tools:** `[system] + [tool_result_messages...] + session.messages + [user_msg]`. Multiple tool results (future) are injected in list order.
+- **Single tool per invocation (v0.6):** CLI accepts one `--tool` per run; the engine API accepts `List[ToolResult]` for forward compatibility.
+- **Gate:** Default-deny. `Gate(allowed_permissions)` checks that a tool's `required_permissions` are a subset of `allowed`. Each `--grant PERM` adds one permission; multiple `--grant` flags accumulate. Permissions are per-invocation only (no persistence).
+- **CLI flags:** `--tool NAME`, `--tool-arg KEY=VALUE` (repeatable), `--list-tools`, `--grant PERM` (repeatable). Valid permissions: `filesystem-read`, `filesystem-write`, `shell`, `network`.
+- **Compatibility:** `--tool` works with all modes (single-turn, `-i`, `-c`, persisted sessions) and with `--json` and `--stream` (tool runs pre-reasoning; output mode applies to the reasoner response). Gate failure: stderr message, exit code 1.
+
+### Modules
+
+- **`ore/tools.py`** — `Tool` ABC; `EchoTool` (no permissions), `ReadFileTool` (requires `filesystem-read`); `TOOL_REGISTRY` for CLI dispatch.
+- **`ore/gate.py`** — `Permission` enum; `GateError`; `Gate.check(tool)` / `Gate.run(tool, args)`; `Gate.permissive()` for tests.
+- **`ore/types.ToolResult`** — `tool_name`, `output`, `status` ("ok" or "error"), `metadata`. Known metadata keys: `execution_time_ms`, `checked_permissions`, `error_message` (when status is error).
+
+### Invariants
+
+- One reasoner call per turn (tools do not add extra model calls).
+- Session remains append-only; tool result messages are never appended to the session.
+- Denied tools never execute: `gate.check()` runs before `tool.run()`; on failure, `GateError` is raised and the CLI exits cleanly.
+
+---
+
 ## External Dependencies and Requirements
 
 ### Python and environment
@@ -270,16 +296,18 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
 - **`docs/invariants.md`** — Mechanical invariants (loop, session, CLI); testable guarantees.
-- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.5.
-- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models); no live Ollama required.
+- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.6.
+- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate); no live Ollama required.
 - **`.github/workflows/ci.yml`** — CI: Python 3.10, black check, pytest.
 - **`main.py`** — Thin entry point.
 - **`ore/cli.py`** — CLI UX, mode dispatch, session lifecycle.
 - **`ore/core.py`** — Orchestration: loop construction, persona injection, session threading.
 - **`ore/reasoner.py`** — Reasoner abstraction and Ollama backend.
 - **`ore/models.py`** — Model discovery and default selection.
-- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`).
+- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`, `ToolResult`).
 - **`ore/store.py`** — Session persistence (`SessionStore`, `FileSessionStore`).
+- **`ore/tools.py`** — Tool interface and built-in tools (`Tool`, `EchoTool`, `ReadFileTool`, `TOOL_REGISTRY`).
+- **`ore/gate.py`** — Permission gate for tool execution (`Permission`, `Gate`, `GateError`).
 - **`ore/__init__.py`** — Package API surface.
 
 ---
@@ -294,9 +322,8 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **Session persistence (implemented in v0.4)**
   - See the *Session persistence* section above.
 
-- **Add tools (future version)**
-  - Extend `ORE.execute` to inject tool-call messages into the message list.
-  - Keep `Reasoner` focused on "given messages → model call → Response".
+- **Tools (implemented in v0.6)**
+  - `ORE.execute()` and `execute_stream()` accept optional `tool_results: List[ToolResult]`. Tool results are injected as user-role messages after the system message, before session history, in list order. They are **turn-scoped** — never stored in the session. Use `--tool NAME`, `--tool-arg KEY=VALUE`, and `--grant PERM` from the CLI. See *Tool & Gate (v0.6)* below.
 
 - **Add richer CLI commands**
   - Streaming, verbose, and JSON output are implemented (v0.3.1–v0.5). Further options: different personas, named sessions.
