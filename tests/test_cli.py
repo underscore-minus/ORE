@@ -316,3 +316,142 @@ class TestRouteCli:
         assert data["routing"]["target"] == "echo"
         assert "confidence" in data["routing"]
         assert "reasoning" in data["routing"]
+
+
+class TestSkillCli:
+    """Tests for v0.8 --skill / --list-skills."""
+
+    @pytest.fixture(autouse=True)
+    def _skill_fixtures(self, tmp_path):
+        """Create a minimal skill directory for CLI tests."""
+        skill_dir = tmp_path / "test-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: test-skill\ndescription: A test skill\n"
+            "hints:\n  - activate test\n---\n\nBe concise and factual.\n",
+            encoding="utf-8",
+        )
+        self._skills_root = tmp_path
+        self._skill_registry = {
+            "test-skill": __import__(
+                "ore.types", fromlist=["SkillMetadata"]
+            ).SkillMetadata(
+                name="test-skill",
+                description="A test skill",
+                hints=["activate test"],
+                path=skill_dir,
+            )
+        }
+
+    def test_list_skills_flag(self, capsys):
+        """--list-skills prints discovered skills and exits 0."""
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--list-skills"]):
+            with patch(
+                "ore.cli.build_skill_registry", return_value=self._skill_registry
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    from ore.cli import run
+
+                    run()
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "test-skill" in out
+        assert "A test skill" in out
+
+    def test_list_skills_empty(self, capsys):
+        """--list-skills with no skills prints message and exits 0."""
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--list-skills"]):
+            with patch("ore.cli.build_skill_registry", return_value={}):
+                with pytest.raises(SystemExit) as exc_info:
+                    from ore.cli import run
+
+                    run()
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "No skills" in out
+
+    def test_skill_flag_loads_and_injects(self, capsys):
+        """--skill NAME loads instructions and passes skill_context to engine."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--skill", "test-skill", "--json"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    with patch(
+                        "ore.cli.build_skill_registry",
+                        return_value=self._skill_registry,
+                    ):
+                        from ore.cli import run
+
+                        run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["content"] == "fake response"
+
+    def test_skill_and_tool_coexist(self, capsys):
+        """--skill and --tool can be used together."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            [
+                "ore",
+                "hello",
+                "--skill",
+                "test-skill",
+                "--tool",
+                "echo",
+                "--tool-arg",
+                "msg=hi",
+                "--json",
+            ],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    with patch(
+                        "ore.cli.build_skill_registry",
+                        return_value=self._skill_registry,
+                    ):
+                        from ore.cli import run
+
+                        run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["content"] == "fake response"
+
+    def test_unknown_skill_exits(self, capsys):
+        """--skill with unknown name prints error and exits 1."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--skill", "nonexistent"],
+        ):
+            with patch("ore.cli.default_model", return_value="fake-model"):
+                with patch("ore.cli.build_skill_registry", return_value={}):
+                    with pytest.raises(SystemExit) as exc_info:
+                        from ore.cli import run
+
+                        run()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "Unknown skill" in err
+
+    def test_route_selects_skill(self, capsys):
+        """--route with a skill-matching prompt dispatches correctly."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "activate test please", "--route", "--json"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    with patch(
+                        "ore.cli.build_skill_registry",
+                        return_value=self._skill_registry,
+                    ):
+                        from ore.cli import run
+
+                        run()
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "content" in data
+        assert "routing" in data
+        assert data["routing"]["target"] == "test-skill"
+        assert data["routing"]["target_type"] == "skill"

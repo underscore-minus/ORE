@@ -207,3 +207,80 @@ class TestOREExecuteStream:
         except StopIteration:
             pass
         assert fake_reasoner.stream_reason_call_count == 3
+
+
+class TestSkillContextInjection:
+    """Tests for v0.8 skill_context injection into the message list."""
+
+    def test_skill_context_injected_before_tool_results(
+        self, fake_reasoner: FakeReasoner, sample_session: Session
+    ):
+        """Message order: [system, skill_system, tool_user, session..., user]."""
+        engine = ORE(fake_reasoner)
+        tr = ToolResult(tool_name="echo", output="tool out", status="ok")
+        engine.execute(
+            "prompt",
+            session=sample_session,
+            tool_results=[tr],
+            skill_context=["[Skill:test]\nDo X."],
+        )
+        msgs = fake_reasoner.last_messages
+        assert msgs[0].role == "system"  # Aya persona
+        assert msgs[1].role == "system"  # Skill instruction
+        assert "[Skill:test]" in msgs[1].content
+        assert msgs[2].role == "user"  # Tool result
+        assert "[Tool:echo]" in msgs[2].content
+        # Session messages follow
+        assert msgs[3].role == "user"
+        assert msgs[3].content == "hello"
+        assert msgs[4].role == "assistant"
+        # User prompt is last
+        assert msgs[5].role == "user"
+        assert msgs[5].content == "prompt"
+
+    def test_skill_context_not_stored_in_session(self, fake_reasoner: FakeReasoner):
+        """Skill messages are turn-scoped; session only gets user + assistant."""
+        engine = ORE(fake_reasoner)
+        session = Session()
+        engine.execute(
+            "hi",
+            session=session,
+            skill_context=["[Skill:x]\nInstructions."],
+        )
+        assert len(session.messages) == 2
+        assert session.messages[0].content == "hi"
+        assert session.messages[1].content == "fake response"
+        for m in session.messages:
+            assert "[Skill:" not in m.content
+
+    def test_skill_context_uses_system_role(self, fake_reasoner: FakeReasoner):
+        """Injected skill messages have role='system'."""
+        engine = ORE(fake_reasoner)
+        engine.execute("hi", skill_context=["Instruction A", "Instruction B"])
+        msgs = fake_reasoner.last_messages
+        # msgs[0] = Aya system, msgs[1] = skill A, msgs[2] = skill B, msgs[3] = user
+        assert msgs[1].role == "system"
+        assert msgs[1].content == "Instruction A"
+        assert msgs[2].role == "system"
+        assert msgs[2].content == "Instruction B"
+
+    @pytest.mark.invariant
+    def test_reasoner_still_called_once_with_skills(self, fake_reasoner: FakeReasoner):
+        """Invariant: one reason() call even with skill_context."""
+        engine = ORE(fake_reasoner)
+        engine.execute("hi", skill_context=["Do something."])
+        assert fake_reasoner.reason_call_count == 1
+
+    def test_no_skill_context_preserves_v07_behavior(self, fake_reasoner: FakeReasoner):
+        """skill_context=None produces the same message list as v0.7."""
+        engine = ORE(fake_reasoner)
+        tr = ToolResult(tool_name="echo", output="out", status="ok")
+        engine.execute("hi", tool_results=[tr])
+        msgs = fake_reasoner.last_messages
+        # v0.7 order: [system, tool_user, user]
+        assert len(msgs) == 3
+        assert msgs[0].role == "system"
+        assert msgs[1].role == "user"
+        assert "[Tool:echo]" in msgs[1].content
+        assert msgs[2].role == "user"
+        assert msgs[2].content == "hi"

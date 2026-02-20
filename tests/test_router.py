@@ -125,6 +125,35 @@ class TestRuleRouter:
         assert d1.confidence == d2.confidence
 
 
+class TestRuleRouterWithSkillTargets:
+    """v0.8: verify RuleRouter works with target_type='skill'."""
+
+    def test_route_selects_skill_target(self):
+        targets = [
+            RoutingTarget("my-skill", "skill", "A test skill", ["activate skill"]),
+            RoutingTarget("echo", "tool", "Echo tool", ["echo"]),
+        ]
+        router = RuleRouter(confidence_threshold=0.0)
+        decision = router.route("please activate skill now", targets)
+        assert decision.target == "my-skill"
+        assert decision.target_type == "skill"
+
+    def test_mixed_tool_and_skill_targets(self):
+        targets = [
+            RoutingTarget("my-skill", "skill", "A skill", ["summarize"]),
+            RoutingTarget("echo", "tool", "Echo", ["echo"]),
+        ]
+        router = RuleRouter(confidence_threshold=0.0)
+        # "echo" should match the tool
+        decision = router.route("echo hello", targets)
+        assert decision.target == "echo"
+        assert decision.target_type == "tool"
+        # "summarize" should match the skill
+        decision = router.route("summarize the document", targets)
+        assert decision.target == "my-skill"
+        assert decision.target_type == "skill"
+
+
 @pytest.mark.invariant
 def test_route_does_not_mutate_targets_list():
     """Invariant: routing must not mutate the targets list or its items."""
@@ -138,3 +167,19 @@ def test_route_does_not_mutate_targets_list():
         assert t.hints == tc.hints
         assert t.target_type == tc.target_type
         assert t.description == tc.description
+
+
+@pytest.mark.invariant
+def test_route_does_not_mutate_skill_targets():
+    """Invariant: routing must not mutate skill targets either."""
+    targets = [
+        RoutingTarget("my-skill", "skill", "A skill", ["do the thing"]),
+    ]
+    targets_copy = copy.deepcopy(targets)
+    router = RuleRouter(confidence_threshold=0.0)
+    router.route("do the thing", targets)
+    assert len(targets) == len(targets_copy)
+    for t, tc in zip(targets, targets_copy):
+        assert t.name == tc.name
+        assert t.hints == tc.hints
+        assert t.target_type == tc.target_type

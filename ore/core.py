@@ -39,25 +39,29 @@ class ORE:
         user_prompt: str,
         session: Optional[Session] = None,
         tool_results: Optional[List[ToolResult]] = None,
+        skill_context: Optional[List[str]] = None,
     ) -> Response:
         """
         Run one turn of the irreducible loop.
 
-        Without a session (default, v0.1/v0.2 behaviour):
-            message list = [system, user]
+        Message list (v0.8):
+            [system] + [skill_messages...] + [tool_results...] + session.messages + [user]
 
-        With a session (v0.3 cognitive continuity):
-            message list = [system] + session.messages + [user]
-            After the reasoner responds, the user and assistant messages are
-            appended to the session so the next turn sees the full history.
+        skill_context (v0.8): instruction strings injected as role="system"
+        after the persona prompt, before tool results. Turn-scoped — never
+        stored in session. See docs/skills.md for design decisions.
 
-        With tool_results (v0.6): tool result messages are injected after system,
-        before session, in list order. Tool results are turn-scoped — never stored
-        in session. The session is an explicit argument — there is no hidden state.
+        tool_results (v0.6): injected as role="user" after skill context,
+        before session. Turn-scoped.
+
+        The session is an explicit argument — there is no hidden state.
         """
         user_msg = Message(role="user", content=user_prompt)
 
         messages = [Message(role="system", content=self.system_prompt)]
+        if skill_context:
+            for instruction in skill_context:
+                messages.append(Message(role="system", content=instruction))
         if tool_results:
             for r in tool_results:
                 messages.append(
@@ -73,7 +77,6 @@ class ORE:
         response = self.reasoner.reason(messages)
 
         if session is not None:
-            # Append user turn, then assistant turn — order is canonical.
             session.messages.append(user_msg)
             session.messages.append(Message(role="assistant", content=response.content))
 
@@ -84,14 +87,18 @@ class ORE:
         user_prompt: str,
         session: Optional[Session] = None,
         tool_results: Optional[List[ToolResult]] = None,
+        skill_context: Optional[List[str]] = None,
     ) -> Generator[str, None, Response]:
         """
         Streaming variant: yields str chunks. Session is updated after exhaustion.
-        Tool results (v0.6) injected same as execute(); final StopIteration = Response.
+        Skill context and tool results injected same as execute().
         """
         user_msg = Message(role="user", content=user_prompt)
 
         messages = [Message(role="system", content=self.system_prompt)]
+        if skill_context:
+            for instruction in skill_context:
+                messages.append(Message(role="system", content=instruction))
         if tool_results:
             for r in tool_results:
                 messages.append(

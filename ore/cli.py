@@ -6,21 +6,27 @@ v0.4 adds --save-session / --resume-session for opt-in file persistence.
 v0.5 adds --json / -j for structured output and stdin ingestion for piped prompts.
 v0.6 adds --tool / --tool-arg / --list-tools / --grant for tool & gate framework.
 v0.7 adds --route for intent-based tool selection (routing info to stderr).
+v0.8 adds --skill / --list-skills for skill activation; routing merges tool + skill targets.
 """
 
 import argparse
 import json
 import sys
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .core import ORE
 from .gate import Gate, GateError, Permission
 from .models import default_model, fetch_models
 from .reasoner import AyaReasoner
 from .router import RuleRouter, build_targets_from_registry
+from .skills import (
+    build_skill_registry,
+    build_targets_from_skill_registry,
+    load_skill_instructions,
+)
 from .store import FileSessionStore
 from .tools import TOOL_REGISTRY
-from .types import Response, RoutingDecision, Session, ToolResult
+from .types import Response, RoutingDecision, Session, SkillMetadata, ToolResult
 
 # Commands that exit any REPL mode (case-insensitive)
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
@@ -64,18 +70,38 @@ def _get_tool_results(
         sys.exit(1)
 
 
-def _route_and_get_tool_results(
+def _get_skill_context(
+    skill_name: Optional[str],
+    skill_registry: Dict[str, SkillMetadata],
+) -> Optional[List[str]]:
+    """
+    If skill_name is set, load its instructions and return as skill_context.
+    On unknown skill: print to stderr and exit(1).
+    """
+    if not skill_name:
+        return None
+    if skill_name not in skill_registry:
+        print(f"Unknown skill: {skill_name}", file=sys.stderr)
+        sys.exit(1)
+    meta = skill_registry[skill_name]
+    instructions = load_skill_instructions(meta.path)
+    return [f"[Skill:{skill_name}]\n{instructions}"]
+
+
+def _route_and_dispatch(
     prompt: str,
     gate: Gate,
     verbose: bool,
+    skill_registry: Dict[str, SkillMetadata],
     confidence_threshold: float = 0.5,
-) -> Tuple[Optional[List[ToolResult]], RoutingDecision]:
+) -> Tuple[Optional[List[ToolResult]], Optional[List[str]], RoutingDecision]:
     """
-    Run router on prompt; if a tool is selected, run it through gate and return
-    [result] + decision. Otherwise return (None, decision). All routing info
-    is printed to stderr so stdout stays clean for JSON.
+    Run router on prompt (tool + skill targets merged); dispatch to the
+    selected target. Returns (tool_results, skill_context, decision).
+    All routing info is printed to stderr so stdout stays clean for JSON.
     """
     targets = build_targets_from_registry(TOOL_REGISTRY)
+    targets += build_targets_from_skill_registry(skill_registry)
     decision = RuleRouter(confidence_threshold=confidence_threshold).route(
         prompt, targets
     )
@@ -85,7 +111,7 @@ def _route_and_get_tool_results(
             f"[Route]: No match, using reasoner only. {decision.reasoning}",
             file=sys.stderr,
         )
-        return None, decision
+        return None, None, decision
     print(
         f"[Route]: {decision.target} (confidence: {decision.confidence:.2f}) — {decision.reasoning}",
         file=sys.stderr,
@@ -95,6 +121,15 @@ def _route_and_get_tool_results(
             f"  routing_id={decision.id} target_type={decision.target_type} args={decision.args}",
             file=sys.stderr,
         )
+
+    # Dispatch based on target type
+    if decision.target_type == "skill":
+        meta = skill_registry[decision.target]
+        instructions = load_skill_instructions(meta.path)
+        skill_ctx = [f"[Skill:{decision.target}]\n{instructions}"]
+        return None, skill_ctx, decision
+
+    # target_type == "tool"
     tool = TOOL_REGISTRY[decision.target]
     args = tool.extract_args(prompt) or decision.args
     decision = RoutingDecision(
@@ -108,7 +143,7 @@ def _route_and_get_tool_results(
     )
     try:
         result = gate.run(tool, args)
-        return [result], decision
+        return [result], None, decision
     except GateError as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
@@ -154,9 +189,12 @@ def _stream_turn(
     session: Optional[Session],
     verbose: bool,
     tool_results: Optional[List[ToolResult]] = None,
+    skill_context: Optional[List[str]] = None,
 ) -> Response:
     """Drive the streaming generator, print chunks as they arrive, return final Response."""
-    gen = engine.execute_stream(prompt, session=session, tool_results=tool_results)
+    gen = engine.execute_stream(
+        prompt, session=session, tool_results=tool_results, skill_context=skill_context
+    )
     print("[AYA]: ", end="", flush=True)
     try:
         while True:
@@ -172,7 +210,7 @@ def _stream_turn(
 
 
 def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.7 CLI")
+    parser = argparse.ArgumentParser(description="ORE v0.8 CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -268,7 +306,7 @@ def run() -> None:
     parser.add_argument(
         "--route",
         action="store_true",
-        help="Route prompt to a tool by intent (v0.7); mutually exclusive with --tool",
+        help="Route prompt to a tool or skill by intent; mutually exclusive with --tool",
     )
     parser.add_argument(
         "--route-threshold",
@@ -276,6 +314,18 @@ def run() -> None:
         default=0.5,
         metavar="FLOAT",
         help="Confidence threshold for --route (0.0–1.0, default 0.5); lower = more permissive",
+    )
+    parser.add_argument(
+        "--skill",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="Activate a skill by name (v0.8); injects instructions into context",
+    )
+    parser.add_argument(
+        "--list-skills",
+        action="store_true",
+        help="List discovered skills from ~/.ore/skills/ and exit",
     )
     args = parser.parse_args()
 
@@ -311,6 +361,22 @@ def run() -> None:
             print(f"  {name}{req}")
             print(f"    {tool.description}")
         print("\nValid --grant values:", ", ".join(valid_perms))
+        sys.exit(0)
+
+    # Build skill registry once at startup (scans ~/.ore/skills/)
+    skill_registry = build_skill_registry()
+
+    if args.list_skills:
+        if not skill_registry:
+            print("No skills found in ~/.ore/skills/")
+            sys.exit(0)
+        print("Available skills (use --skill NAME):")
+        for name in sorted(skill_registry.keys()):
+            meta = skill_registry[name]
+            print(f"  {name}")
+            print(f"    {meta.description}")
+            if meta.hints:
+                print(f"    hints: {', '.join(meta.hints)}")
         sys.exit(0)
 
     # Parse --grant into Permission set; default-deny
@@ -362,7 +428,7 @@ def run() -> None:
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.7 interactive (model: {model_id})")
+        print(f"ORE v0.8 interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -372,19 +438,34 @@ def run() -> None:
                 break
             if line.lower() in _REPL_EXIT_COMMANDS:
                 break
+            skill_context = _get_skill_context(args.skill, skill_registry)
             if args.route:
-                tool_results, _ = _route_and_get_tool_results(
-                    line, gate, args.verbose, confidence_threshold=args.route_threshold
+                tool_results, route_skill_ctx, _ = _route_and_dispatch(
+                    line,
+                    gate,
+                    args.verbose,
+                    skill_registry,
+                    confidence_threshold=args.route_threshold,
                 )
+                # Merge: explicit --skill + route-selected skill
+                if route_skill_ctx:
+                    skill_context = (skill_context or []) + route_skill_ctx
             else:
                 tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
             print("--- ORE: Reasoning ---")
             if args.stream:
                 _stream_turn(
-                    engine, line, None, args.verbose, tool_results=tool_results
+                    engine,
+                    line,
+                    None,
+                    args.verbose,
+                    tool_results=tool_results,
+                    skill_context=skill_context,
                 )
             else:
-                response = engine.execute(line, tool_results=tool_results)
+                response = engine.execute(
+                    line, tool_results=tool_results, skill_context=skill_context
+                )
                 _print_response(response, verbose=args.verbose)
             print()
 
@@ -399,7 +480,7 @@ def run() -> None:
         else:
             session = Session()
         save_name = args.save_session
-        print(f"ORE v0.7 conversational (model: {model_id} | session: {session.id})")
+        print(f"ORE v0.8 conversational (model: {model_id} | session: {session.id})")
         if args.resume_session:
             print(f"  Resumed: {args.resume_session}")
         if save_name:
@@ -414,13 +495,17 @@ def run() -> None:
                     break
                 if line.lower() in _REPL_EXIT_COMMANDS:
                     break
+                skill_context = _get_skill_context(args.skill, skill_registry)
                 if args.route:
-                    tool_results, _ = _route_and_get_tool_results(
+                    tool_results, route_skill_ctx, _ = _route_and_dispatch(
                         line,
                         gate,
                         args.verbose,
+                        skill_registry,
                         confidence_threshold=args.route_threshold,
                     )
+                    if route_skill_ctx:
+                        skill_context = (skill_context or []) + route_skill_ctx
                 else:
                     tool_results = _get_tool_results(
                         args.tool, args.tool_arg or None, gate
@@ -428,11 +513,19 @@ def run() -> None:
                 print("--- ORE: Reasoning ---")
                 if args.stream:
                     _stream_turn(
-                        engine, line, session, args.verbose, tool_results=tool_results
+                        engine,
+                        line,
+                        session,
+                        args.verbose,
+                        tool_results=tool_results,
+                        skill_context=skill_context,
                     )
                 else:
                     response = engine.execute(
-                        line, session=session, tool_results=tool_results
+                        line,
+                        session=session,
+                        tool_results=tool_results,
+                        skill_context=skill_context,
                     )
                     _print_response(response, verbose=args.verbose)
                 if save_name:
@@ -444,23 +537,36 @@ def run() -> None:
 
     else:
         routing_decision: Optional[RoutingDecision] = None
+        skill_context = _get_skill_context(args.skill, skill_registry)
         if args.route:
-            tool_results, routing_decision = _route_and_get_tool_results(
+            tool_results, route_skill_ctx, routing_decision = _route_and_dispatch(
                 args.prompt,
                 gate,
                 args.verbose,
+                skill_registry,
                 confidence_threshold=args.route_threshold,
             )
+            if route_skill_ctx:
+                skill_context = (skill_context or []) + route_skill_ctx
         else:
             tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
         if not args.json:
-            print("--- ORE v0.7: Reasoning ---")
+            print("--- ORE v0.8: Reasoning ---")
         if args.stream:
             _stream_turn(
-                engine, args.prompt, None, args.verbose, tool_results=tool_results
+                engine,
+                args.prompt,
+                None,
+                args.verbose,
+                tool_results=tool_results,
+                skill_context=skill_context,
             )
         else:
-            response = engine.execute(args.prompt, tool_results=tool_results)
+            response = engine.execute(
+                args.prompt,
+                tool_results=tool_results,
+                skill_context=skill_context,
+            )
             if args.json:
                 _print_json_response(response, routing=routing_decision)
             else:

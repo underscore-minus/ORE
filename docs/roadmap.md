@@ -26,28 +26,9 @@ Short notes on version intent. Not a feature backlog.
 
 **v0.7** — Routing / Intent Detection (implemented). Opt-in `--route`; `--route-threshold FLOAT` to tune confidence (default 0.5); `RuleRouter` with keyword/phrase matching; `RoutingTarget` / `RoutingDecision`; routing info to stderr; `--json` includes `routing` key; fallback when no match or below threshold; invariant: router does not mutate targets. `TEST_ROUTING_TARGET` exported for deterministic test setups.
 
----
+**v0.7.1** — Design decisions document (`docs/skills.md`). Six locked decisions before v0.8 implementation: injection order, skill message role, `ORE.execute()` API, simultaneous tool + skill semantics, Level 3 resource scope (passive injection only), routing decisions in REPL (ephemeral by design). `docs/foundation.md` updated with "Not a script execution runtime" constraint.
 
-Next features (v0.8 → v1.0):
-
-**v0.8** — Skill / Instruction Activation
-
-Goal: Modularize agent behaviors via instructions or "skills."
-Problem solved: v0.7 routing exists but skills are not yet first-class, reusable, or filesystem-based.
-Changes:
-
-Introduce filesystem-based skill structure: metadata, instructions, resources.
-
-Skills loaded on-demand; context-aware activation without context bloat.
-
-CLI / routing layer can trigger skills automatically.
-Tests / Validation:
-
-Skill activation triggers correct instructions and outputs.
-
-Session immutability and reasoner call invariants enforced.
-
-Integration tests: multiple skills used in one workflow.
+**v0.8** — Skill / Instruction Activation (implemented). Filesystem-based skills at `~/.ore/skills/` (SKILL.md + YAML frontmatter). Three-level loading: metadata always (Level 1), instructions on activation (Level 2), resource files on-demand (Level 3). `ORE.execute()` and `execute_stream()` accept `skill_context: Optional[List[str]]`; injected as `role="system"` before tool results. `--skill NAME` activates a skill explicitly; `--list-skills` lists discovered skills; `--route` merges tool + skill targets and dispatches by `target_type`. Path traversal blocked in `load_skill_resource`. Session and reasoner-once-per-turn invariants preserved. `pyyaml>=6.0` added to `requirements.txt`. New module `ore/skills.py`; `SkillMetadata` added to `ore/types.py`.
 
 ---
 

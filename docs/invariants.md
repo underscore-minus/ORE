@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.7)
+# ORE Mechanical Invariants (v0.8)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 
@@ -75,7 +75,20 @@ For each `ORE.execute()` or `ORE.execute_stream()` invocation:
 - **Session and loop unchanged** — Session remains append-only; only user and assistant messages are appended. Existing invariant tests continue to pass.
 - **Router does not mutate targets** — `Router.route(prompt, targets)` must not mutate the `targets` list or its items.
 
-**How we test:** `tests/test_router.py` — `test_route_does_not_mutate_targets_list` (invariant). Routing behaviour: `tests/test_router.py` (RuleRouter, build_targets); `tests/test_cli.py` — `TestRouteCli`, `test_route_and_tool_rejected` (invariant).
+**How we test:** `tests/test_router.py` — `test_route_does_not_mutate_targets_list` and `test_route_does_not_mutate_skill_targets` (invariants). Routing behaviour: `tests/test_router.py` (RuleRouter, build_targets); `tests/test_cli.py` — `TestRouteCli`, `test_route_and_tool_rejected` (invariant).
+
+---
+
+## Skill Invariants (v0.8)
+
+- **Skill context is turn-scoped** — Skill instruction messages are injected for the current turn only. They are **never** stored in the session and **never** persisted to disk.
+- **Skill messages use `role="system"`** — Injected skill messages extend the system prompt; they are not conversation messages.
+- **One reasoner call per turn** — Skill activation does not introduce a second reasoner call. Preserved alongside tool and routing invariants.
+- **Session append-only** — Session behaviour is unchanged; only user and assistant messages are appended.
+- **`skill_context=None` is a no-op** — Without skill context, the message list is identical to v0.7 behaviour.
+- **Resource path traversal blocked** — `load_skill_resource()` resolves the full path and rejects anything that escapes `skill_dir/resources/`.
+
+**How we test:** `tests/test_core.py` — `test_skill_context_not_stored_in_session`, `test_skill_context_uses_system_role`, `test_reasoner_still_called_once_with_skills` (invariant), `test_no_skill_context_preserves_v07_behavior`. `tests/test_skills.py` — `test_path_traversal_blocked`, `test_path_traversal_blocked_sibling`.
 
 ---
 
@@ -105,4 +118,4 @@ This prevents future contributors from treating these as upgradable invariants.
 
 ## Tests Marked as Invariant
 
-Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py`, `tests/test_cli.py`, and `tests/test_gate.py` for the full suite.
+Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py`, `tests/test_cli.py`, `tests/test_gate.py`, and `tests/test_router.py` for the full suite.

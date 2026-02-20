@@ -4,6 +4,7 @@ List-first schema to support context windows and memory.
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import time
@@ -87,6 +88,22 @@ class ToolResult:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SkillMetadata:
+    """
+    Level 1 skill metadata (v0.8) — always loaded, low token cost.
+
+    Used for discovery (--list-skills) and routing (hints → RoutingTarget).
+    Instructions (Level 2) and resources (Level 3) are loaded on-demand
+    by the skill loader, not stored here.
+    """
+
+    name: str
+    description: str
+    hints: List[str]
+    path: Path  # Absolute path to the skill directory
 
 
 @dataclass

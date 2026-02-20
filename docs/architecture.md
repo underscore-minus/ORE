@@ -1,6 +1,6 @@
-# ORE Architecture (v0.7)
+# ORE Architecture (v0.8)
 
-**Version**: v0.7 (Routing / Intent Detection)
+**Version**: v0.8 (Skill / Instruction Activation)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -17,7 +17,7 @@ ORE supports four modes, all sharing the same loop:
 | Conversational REPL | `--conversational` / `-c` | `Session` | Yes |
 | Conversational (persisted) | `--save-session` / `--resume-session` | `Session` | Yes (implies `-c`) |
 
-**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`). **v0.6:** `--tool NAME` runs a built-in tool before reasoning (single tool per turn); `--tool-arg KEY=VALUE` (repeatable) passes arguments; `--list-tools` lists tools and exits; `--grant PERM` (repeatable) grants a permission (default-deny). **v0.7:** `--route` selects a tool by intent (keyword matching); mutually exclusive with `--tool`; routing info printed to stderr; fallback when no match or below confidence threshold. `--route-threshold FLOAT` overrides the default confidence threshold (default 0.5; lower = more permissive).
+**Orthogonal flags:** `--stream` / `-s` streams output token-by-token in any mode. `--verbose` / `-v` shows response metadata (ID, model, token counts); default is metadata hidden. `--json` / `-j` outputs structured JSON (single-turn only; incompatible with `--stream`). **v0.6:** `--tool NAME` runs a built-in tool before reasoning (single tool per turn); `--tool-arg KEY=VALUE` (repeatable) passes arguments; `--list-tools` lists tools and exits; `--grant PERM` (repeatable) grants a permission (default-deny). **v0.7:** `--route` selects a tool or skill by intent (keyword matching); mutually exclusive with `--tool`; routing info printed to stderr; fallback when no match or below confidence threshold. `--route-threshold FLOAT` overrides the default confidence threshold (default 0.5; lower = more permissive). **v0.8:** `--skill NAME` activates a skill by name (injects instructions into context); `--list-skills` lists discovered skills; `--skill` and `--tool` can coexist; `--route` now merges tool and skill targets.
 
 **Mode precedence:** If `--save-session` or `--resume-session` is present → conversational. Else if `-c` → conversational. Else → stateless.
 
@@ -58,6 +58,7 @@ Any change that adds implicit history (storing state inside `ORE` without passin
     - Builds the message list for each turn:
       - Without session: `[system, user]`
       - With session: `[system] + session.messages + [user]`
+      - Full (v0.8): `[system] + [skill_messages...] + [tool_results...] + session.messages + [user]`
     - Calls the configured **`Reasoner`** backend (`reason()` or `stream_reason()` when streaming).
     - If a session was provided, appends the user and assistant messages to it.
   - **`ore.reasoner.AyaReasoner`**:
@@ -132,9 +133,10 @@ Any change that adds implicit history (storing state inside `ORE` without passin
   - Hold a reference to a `Reasoner` implementation.
   - Load Aya's **system prompt** from `ore/prompts/aya.txt`.
   - Construct the message list for each turn:
-    - `[system]` + tool result messages (if any; v0.6) + `session.messages` (if any) + `[user]`
+    - `[system]` + skill context messages (if any; v0.8; `role="system"`) + tool result messages (if any; v0.6) + `session.messages` (if any) + `[user]`
   - Delegate to `self.reasoner.reason(messages)` and return its `Response`; or when streaming, to `self.reasoner.stream_reason(messages)` via `execute_stream()`.
   - If a session was provided, append the user and assistant messages after the call.
+  - Accepts optional `skill_context: List[str]` (v0.8) for turn-scoped instruction injection.
 - **Why it exists**:
   - Central place to enforce the loop structure.
   - Inject persona without mixing it into the LLM backend.
@@ -275,18 +277,18 @@ Tools are **pre-reasoning context injectors**: a tool runs first (via CLI `--too
 
 ## Routing (v0.7)
 
-Routing selects a tool (or later skill) from the user prompt by intent, without an extra LLM call. **Opt-in** via `--route`; mutually exclusive with `--tool`.
+Routing selects a tool or skill from the user prompt by intent, without an extra LLM call. **Opt-in** via `--route`; mutually exclusive with `--tool`.
 
 ### Design
 
 - **No extra reasoner call.** The router is rule-based (`RuleRouter`): keyword/phrase matching against each target's `routing_hints`. Same prompt + targets yields the same decision (deterministic).
-- **Generic targets.** `RoutingTarget` has `name`, `target_type` ("tool" or "skill"), `description`, `hints`. `build_targets_from_registry(TOOL_REGISTRY)` builds the list; v0.8 skills can be added as targets without changing the router interface.
+- **Generic targets.** `RoutingTarget` has `name`, `target_type` ("tool" or "skill"), `description`, `hints`. `build_targets_from_registry(TOOL_REGISTRY)` builds tool targets; `build_targets_from_skill_registry(skill_registry)` builds skill targets (v0.8). Both are merged for `--route`.
 - **Visibility.** Routing decision is always printed to **stderr** (stdout stays clean for `--json`). With `--verbose`, full decision fields are shown. With `--json`, the JSON payload includes a `routing` key (target, confidence, reasoning, args).
 - **Fallback.** If no hint matches or confidence is below threshold (default 0.5), the decision is "fallback" and the turn runs with reasoner only; a clear message is printed to stderr.
 
 ### Flow
 
-When `--route` is set and `--tool` is not: CLI builds targets from the registry, runs `RuleRouter(confidence_threshold).route(prompt, targets)` (threshold from `--route-threshold`, default 0.5), prints the decision to stderr, then either runs the selected tool through the gate (and passes `tool_results` to the engine) or runs the engine with no tool results. Core (`ore/core.py`) is unchanged.
+When `--route` is set: CLI builds targets from both `TOOL_REGISTRY` and `skill_registry` (merged), runs `RuleRouter(confidence_threshold).route(prompt, targets)`, prints the decision to stderr, then dispatches: if a tool is selected, runs it through the gate and passes `tool_results` to the engine; if a skill is selected, loads its instructions and passes `skill_context` to the engine. Core (`ore/core.py`) is unchanged.
 
 ### Modules
 
@@ -298,7 +300,68 @@ When `--route` is set and `--tool` is not: CLI builds targets from the registry,
 ### Invariants
 
 - One reasoner call per turn (routing does not add a second call).
-- Routing does not mutate the targets list (enforced by test `test_route_does_not_mutate_targets_list`).
+- Routing does not mutate the targets list (enforced by `test_route_does_not_mutate_targets_list` and `test_route_does_not_mutate_skill_targets`).
+
+---
+
+## Skill Activation (v0.8)
+
+Skills are filesystem-based instruction modules. Activating a skill injects its instructions into the turn's context as `role="system"` messages, before tool results. Skills are turn-scoped and never stored in the session.
+
+### Three-Level Loading Model
+
+| Level | Content | When loaded |
+|-------|---------|-------------|
+| 1 — Metadata | YAML frontmatter (`name`, `description`, `hints`) | Always, at CLI startup (for discovery and routing) |
+| 2 — Instructions | SKILL.md body | When the skill is activated (`--skill` or `--route`) |
+| 3 — Resources | Files in `skill_dir/resources/` | On-demand, when referenced by instructions |
+
+### Skill Format
+
+```
+~/.ore/skills/
+  skill-name/
+    SKILL.md          # YAML frontmatter (Level 1) + instructions body (Level 2)
+    resources/        # Optional Level 3 files
+      template.md
+```
+
+```markdown
+---
+name: skill-name
+description: One-line description used for discovery and routing hints
+hints:
+  - keyword one
+  - keyword two
+---
+
+Instructions body (Level 2). Loaded when the skill is activated.
+```
+
+### Message List (full, v0.8)
+
+```
+[system] + [skill_messages (role="system", [Skill:name] prefix)] + [tool_results (role="user")] + session.messages + [user]
+```
+
+### CLI Flags
+
+- `--skill NAME` — Activate a skill explicitly; may coexist with `--tool`.
+- `--list-skills` — List discovered skills from `~/.ore/skills/` and exit.
+- `--route` merges tool and skill targets; dispatches to the correct handler based on `target_type`.
+
+### Modules
+
+- **`ore/skills.py`** — `load_skill_metadata(skill_dir)`; `load_skill_instructions(skill_dir)`; `load_skill_resource(skill_dir, resource_ref)` (path-traversal-safe); `build_skill_registry(root)`; `build_targets_from_skill_registry(registry)`.
+- **`ore/types.SkillMetadata`** — `name`, `description`, `hints`, `path`.
+
+### Invariants
+
+- One reasoner call per turn (skill activation does not add a second call).
+- Skill messages are turn-scoped — never appended to the session.
+- Skill messages use `role="system"` — they extend the system prompt, not the conversation.
+- Resource path traversal is blocked: resolved path must be inside `skill_dir/resources/`.
+- `skill_context=None` preserves exact v0.7 behavior.
 
 ---
 
@@ -313,6 +376,7 @@ When `--route` is set and `--tool` is not: CLI builds targets from the registry,
 
 - **`ollama>=0.3.0`** — Python client for the local Ollama server.
 - **`python-dotenv>=1.0.0`** — Loads `.env` environment variables.
+- **`pyyaml>=6.0`** — YAML frontmatter parsing for skill metadata (v0.8).
 
 ### Dev/tooling dependencies (`requirements-dev.txt`)
 
@@ -329,19 +393,21 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
 - **`docs/invariants.md`** — Mechanical invariants (loop, session, CLI); testable guarantees.
-- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.7.
-- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router); no live Ollama required.
+- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.8.
+- **`docs/skills.md`** — Locked design decisions for v0.8 skill activation.
+- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router, skills); no live Ollama required.
 - **`.github/workflows/ci.yml`** — CI: Python 3.10, black check, pytest.
 - **`main.py`** — Thin entry point.
 - **`ore/cli.py`** — CLI UX, mode dispatch, session lifecycle.
 - **`ore/core.py`** — Orchestration: loop construction, persona injection, session threading.
 - **`ore/reasoner.py`** — Reasoner abstraction and Ollama backend.
 - **`ore/models.py`** — Model discovery and default selection.
-- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`, `ToolResult`, `RoutingTarget`, `RoutingDecision`).
+- **`ore/types.py`** — Typed data contracts (`Message`, `Response`, `Session`, `ToolResult`, `RoutingTarget`, `RoutingDecision`, `SkillMetadata`).
 - **`ore/store.py`** — Session persistence (`SessionStore`, `FileSessionStore`).
 - **`ore/tools.py`** — Tool interface and built-in tools (`Tool`, `EchoTool`, `ReadFileTool`, `TOOL_REGISTRY`); optional `routing_hints()`, `extract_args(prompt)`.
 - **`ore/gate.py`** — Permission gate for tool execution (`Permission`, `Gate`, `GateError`).
 - **`ore/router.py`** — Routing layer (`Router`, `RuleRouter`, `build_targets_from_registry`).
+- **`ore/skills.py`** — Skill loader and registry (`load_skill_metadata`, `load_skill_instructions`, `load_skill_resource`, `build_skill_registry`, `build_targets_from_skill_registry`).
 - **`ore/__init__.py`** — Package API surface.
 
 ---

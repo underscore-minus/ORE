@@ -1,7 +1,8 @@
 """
-ORE: Orchestrated Reasoning Engine v0.7.
+ORE: Orchestrated Reasoning Engine v0.8.
 Irreducible loop: Input -> Reasoner -> Output. Tools (v0.6) run pre-reasoning, gated.
 Routing (v0.7) selects tools by intent when --route is used.
+Skills (v0.8) inject filesystem-based instructions into context on-demand.
 """
 
 from .cli import run
@@ -15,6 +16,13 @@ from .router import (
     TEST_ROUTING_TARGET,
     build_targets_from_registry,
 )
+from .skills import (
+    build_skill_registry,
+    build_targets_from_skill_registry,
+    load_skill_instructions,
+    load_skill_metadata,
+    load_skill_resource,
+)
 from .store import FileSessionStore, SessionStore
 from .tools import TOOL_REGISTRY, Tool
 from .types import (
@@ -23,6 +31,7 @@ from .types import (
     RoutingDecision,
     RoutingTarget,
     Session,
+    SkillMetadata,
     ToolResult,
 )
 
@@ -39,6 +48,12 @@ __all__ = [
     "RuleRouter",
     "TEST_ROUTING_TARGET",
     "build_targets_from_registry",
+    "SkillMetadata",
+    "build_skill_registry",
+    "build_targets_from_skill_registry",
+    "load_skill_metadata",
+    "load_skill_instructions",
+    "load_skill_resource",
     "Session",
     "SessionStore",
     "FileSessionStore",

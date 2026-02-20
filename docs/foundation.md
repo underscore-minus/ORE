@@ -1,4 +1,4 @@
-ORE — Foundation Document (v0.7)
+ORE — Foundation Document (v0.8)
 
 Purpose
 
@@ -201,6 +201,7 @@ v0.4 — Persistent sessions (opt-in, file-based; CLI flags only; core unchanged
 v0.5 — Composable output (structured JSON, stdin ingestion; CLI only; core unchanged).
 v0.6 — Tool & gate framework (explicit tools, default-deny permissions; tool results turn-scoped, not stored in session).
 v0.7 — Routing / intent detection (opt-in `--route`; rule-based selection of tool from prompt; no extra LLM call; routing decision visible on stderr and in `--json`).
+v0.8 — Skill / instruction activation (filesystem-based skills at `~/.ore/skills/`; `--skill NAME`; `--route` merges tool + skill targets; instructions injected as `role="system"` before tool results; turn-scoped, never stored in session).
 
 Guiding Question
 
