@@ -16,6 +16,8 @@ Short notes on version intent. Not a feature backlog.
 
 **v0.4.1** — Hardening & invariants. Mechanical invariants documented in `docs/invariants.md`; tests enforce reasoner-once-per-turn, session append-only, CLI flag conflicts. CI fails if loop or state model is broken.
 
+**v0.4.2** — invariants.md: canonical terminology (`ORE.execute()`), non-invariants section (determinism, token count, semantic consistency).
+
 ---
 
 Next features:

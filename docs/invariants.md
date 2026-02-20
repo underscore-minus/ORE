@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.4.1)
+# ORE Mechanical Invariants (v0.4.2)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 
@@ -7,6 +7,8 @@ This document lists the **mechanical invariants** of ORE — concrete, testable 
 ## Purpose
 
 Single source of truth for "what must hold" at runtime. CI runs tests that enforce these invariants; any change that breaks the loop or state model causes a test failure.
+
+**Terminology:** We use `ORE.execute()` and `ORE.execute_stream()` as the canonical API names (the orchestrator instance may be named `engine` elsewhere).
 
 ---
 
@@ -56,6 +58,18 @@ For each `ORE.execute()` or `ORE.execute_stream()` invocation:
 - `--interactive` and `--resume-session` may not be used together.
 
 **How we test:** `tests/test_cli.py` — `TestModeValidation` asserts that each invalid combination causes `run()` to exit with an error (`parser.error`).
+
+---
+
+## Non-invariants (explicitly not guaranteed)
+
+The following are **not** invariants; we do not guarantee them:
+
+- **Determinism** — No guarantee of identical output across different models or runs.
+- **Token count or cost** — No guarantee of token usage, latency, or cost bounds.
+- **Semantic consistency** — No guarantee that equivalent prompts yield semantically similar responses across runs.
+
+This prevents future contributors from treating these as upgradable invariants.
 
 ---
 
