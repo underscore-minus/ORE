@@ -1,6 +1,6 @@
-# ORE Architecture (v1.0)
+# ORE Architecture (v1.1)
 
-**Version**: v1.0 (The Mainframe — Structurally Complete)
+**Version**: v1.1 (Engine persona-agnostic; system prompt from consumer)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -29,7 +29,7 @@ ORE supports four modes, all sharing the same loop:
 
 - **Session** — an ordered list of `Message` objects holding prior user and assistant turns.
 - **Explicit state** — the session is passed as an argument to `ORE.execute()`; it is never stored inside the `ORE` object.
-- **System message excluded** — Aya's system prompt is injected fresh each turn and is not part of the session.
+- **System message excluded** — The system prompt (provided by the consumer at engine creation) is injected fresh each turn and is not part of the session.
 - **Append-only** — `ORE.execute()` appends the user message and the assistant response after each turn. No messages are removed or reordered.
 
 Any change that adds implicit history (storing state inside `ORE` without passing it as an argument) would violate the foundation's "no hidden steps" invariant.
@@ -47,14 +47,14 @@ Any change that adds implicit history (storing state inside `ORE` without passin
     - For `--tool`: resolves tool from registry, runs through gate, passes `tool_results` to engine.
     - Optionally lists available Ollama models.
     - Chooses a model (explicit `--model` or auto-selected default).
-    - Instantiates the orchestrator `ORE` with an `AyaReasoner`.
+    - Instantiates the orchestrator `ORE` with an `AyaReasoner` and a system prompt (e.g. Aya persona; owned by the CLI).
     - Runs the appropriate mode:
       - Single-turn: calls `engine.execute(prompt)` or `engine.execute_stream(prompt)` when `--stream`; reads prompt from stdin when no positional arg and stdin is not a TTY; outputs JSON when `--json`.
       - Interactive loop (`-i`): calls `engine.execute(line)` or `engine.execute_stream(line)` per turn — no session.
       - Conversational loop (`-c`): creates a `Session()`, calls `engine.execute(...)` or `engine.execute_stream(...)` per turn.
     - Prints the assistant output; metadata only when `--verbose`.
   - **`ore.core.ORE`**:
-    - Loads Aya's **system persona** from `ore/prompts/aya.txt`.
+    - Accepts `reasoner` and optional `system_prompt` in `__init__`; no built-in persona. Consumers (e.g. CLI) provide the system prompt.
     - Builds the message list for each turn:
       - Without session: `[system, user]`
       - With session: `[system] + session.messages + [user]`
@@ -128,10 +128,9 @@ Any change that adds implicit history (storing state inside `ORE` without passin
 
 ### `ore/core.py`
 
-- **Role**: **Orchestrator / engine** that wires the system persona and optional session to a `Reasoner`.
+- **Role**: **Orchestrator / engine** that wires the consumer-provided system prompt and optional session to a `Reasoner`.
 - **Key responsibilities**:
-  - Hold a reference to a `Reasoner` implementation.
-  - Load Aya's **system prompt** from `ore/prompts/aya.txt`.
+  - Hold a reference to a `Reasoner` implementation and a `system_prompt` string (passed in at construction; default `""`).
   - Construct the message list for each turn:
     - `[system]` + skill context messages (if any; v0.8; `role="system"`) + tool result messages (if any; v0.6) + `session.messages` (if any) + `[user]`
   - Delegate to `self.reasoner.reason(messages)` and return its `Response`; or when streaming, to `self.reasoner.stream_reason(messages)` via `execute_stream()`.
@@ -139,7 +138,7 @@ Any change that adds implicit history (storing state inside `ORE` without passin
   - Accepts optional `skill_context: List[str]` (v0.8) for turn-scoped instruction injection.
 - **Why it exists**:
   - Central place to enforce the loop structure.
-  - Inject persona without mixing it into the LLM backend.
+  - Accept system prompt from the consumer; engine is persona-agnostic.
   - Session threading is explicit here — no implicit state on `ORE`.
 
 ### `ore/reasoner.py`
@@ -451,7 +450,7 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **Add a new reasoner backend**
   - Implement a new subclass of `Reasoner`.
   - Provide `reason(messages: List[Message]) -> Response`.
-  - Wire it in via `ORE(NewReasoner(...))`.
+  - Wire it in via `ORE(NewReasoner(...), system_prompt="...")`.
 
 - **Session persistence (implemented in v0.4)**
   - See the *Session persistence* section above.

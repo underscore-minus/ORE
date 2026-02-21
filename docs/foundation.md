@@ -91,11 +91,9 @@ Without a session, ORE.execute() behaves exactly as in v0.2.
 
 Persona
 
-The system persona ("Aya") is injected by the orchestrator.
+The system prompt is provided by the consumer (e.g. CLI) when constructing the engine. The engine does not load or assume any persona.
 
-Persona is data, not logic.
-
-Reasoners must be persona-agnostic.
+Persona is data, not logic. Reasoners and the engine are persona-agnostic.
 
 Architecture Roles
 

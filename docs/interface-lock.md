@@ -1,4 +1,4 @@
-# ORE Interface Lock (v1.0)
+# ORE Interface Lock (v1.1)
 
 This document is the **frozen contract** for ORE consumers. It enumerates CLI flags, exit codes, schemas, and public API surfaces that must not be broken. Additions are allowed; removals or incompatible changes are not. For rationale and invariants, see [foundation.md](foundation.md) and [invariants.md](invariants.md).
 
@@ -92,7 +92,16 @@ See [artifact-schema.md](artifact-schema.md) for full details. Forward compatibi
 
 ---
 
-## 6. `ORE.execute()` / `ORE.execute_stream()` Signatures
+## 6. `ORE` Constructor and Execute Signatures
+
+**`ORE.__init__(self, reasoner: Reasoner, system_prompt: str = "")`**
+
+- `reasoner`: the `Reasoner` implementation to use.
+- `system_prompt`: optional system prompt string; default `""`. Consumers (CLI, scripts) provide the persona or instructions; the engine does not load any prompt file.
+
+---
+
+**`ORE.execute()` / `ORE.execute_stream()`**
 
 ```python
 def execute(

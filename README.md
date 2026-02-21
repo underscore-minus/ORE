@@ -221,9 +221,10 @@ attributes are available; then import the names you need.
 import ore
 from ore import ORE, AyaReasoner, default_model
 
-# One-shot: engine + one turn
+# One-shot: engine + one turn (consumer provides system prompt)
 model_id = default_model() or "llama3.2"  # use your Ollama model name
-engine = ORE(AyaReasoner(model_id=model_id))
+system_prompt = "You are a helpful assistant."  # your persona / instructions
+engine = ORE(AyaReasoner(model_id=model_id), system_prompt=system_prompt)
 response = engine.execute("What is an irreducible loop?")
 print(response.content)
 ```
@@ -235,7 +236,7 @@ import ore
 from ore import ORE, AyaReasoner, Session, default_model
 
 model_id = default_model() or "llama3.2"
-engine = ORE(AyaReasoner(model_id=model_id))
+engine = ORE(AyaReasoner(model_id=model_id), system_prompt="You are a helpful assistant.")
 session = Session()
 
 r1 = engine.execute("My name is Alice.", session=session)
@@ -258,14 +259,14 @@ Skill and tool data are turn-scoped and never stored in the session. Details: `d
 `main.py` loads the environment and delegates to `ore/cli.py`, which owns argument
 parsing, mode dispatch, session lifecycle, tool execution, and routing. The CLI
 passes a clean message list to `ore/core.py` (the orchestrator), which constructs
-the turn: system persona + optional skill context + optional tool results + optional
+the turn: consumer-provided system prompt + optional skill context + optional tool results + optional
 session history + user message. The orchestrator calls a `Reasoner` exactly once
 and returns a `Response`. `ore/reasoner.py` holds the abstract `Reasoner` base
 class and the default `AyaReasoner` (Ollama-backed). All data flows through typed
 contracts in `ore/types.py`. Session persistence lives in `ore/store.py`. Tools,
 their permission gate, the intent router, and the skill loader are in
 `ore/tools.py`, `ore/gate.py`, `ore/router.py`, and `ore/skills.py` respectively.
-Nothing in the engine knows about the CLI, the persona, or the session — those are
+Nothing in the engine knows about the CLI, the system prompt content, or the session — those are
 wired at the edges.
 
 ---
@@ -302,7 +303,7 @@ Implement the `Reasoner` abstract base class from `ore/reasoner.py`. A reasoner
 must implement `reason(messages: List[Message]) -> Response`. Optionally override
 `stream_reason(messages)` for token-by-token streaming — the default fallback
 delegates to `reason()` and yields the full response in one chunk. Wire the new
-reasoner in at instantiation: `ORE(YourReasoner(model_id))`. The orchestrator,
+reasoner and system prompt at instantiation: `ORE(YourReasoner(model_id), system_prompt="...")`. The orchestrator,
 session, and CLI layer have no knowledge of the backend and require no changes.
 Reasoners must be persona-agnostic: they receive an ordered list of `Message`
 objects and return a `Response`, nothing more.

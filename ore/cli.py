@@ -42,6 +42,12 @@ from .types import (
 # Commands that exit any REPL mode (case-insensitive)
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
 
+# Aya persona: owned by the CLI (product), not by the engine.
+AYA_SYSTEM_PROMPT = (
+    "You are Aya, the central AI assistant of the ORE. "
+    "You are intuitive, transparent, and focused on structured reasoning."
+)
+
 
 def _validate_output_path(path: str) -> Path:
     """
@@ -558,7 +564,7 @@ def run() -> None:
         if not _repl_mode and not args.json and args.artifact_out != "-":
             print(f"Using model: {model_id}\n")
 
-    engine = ORE(AyaReasoner(model_id=model_id))
+    engine = ORE(AyaReasoner(model_id=model_id), system_prompt=AYA_SYSTEM_PROMPT)
 
     if args.interactive:
         print(f"ORE {__version__} interactive (model: {model_id})")
