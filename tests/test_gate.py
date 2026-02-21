@@ -21,13 +21,20 @@ class TestGate:
         assert "msg=hi" in result.output
 
     def test_allowed_tool_passes(self, tmp_path):
+        import os
+
         gate = Gate(frozenset({Permission.FILESYSTEM_READ}))
         f = tmp_path / "allowed.txt"
         f.write_text("content", encoding="utf-8")
-        result = gate.run(ReadFileTool(), {"path": str(f)})
-        assert result.tool_name == "read-file"
-        assert result.status == "ok"
-        assert result.output == "content"
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = gate.run(ReadFileTool(), {"path": "allowed.txt"})
+            assert result.tool_name == "read-file"
+            assert result.status == "ok"
+            assert result.output == "content"
+        finally:
+            os.chdir(old_cwd)
 
     def test_denied_tool_raises_gate_error(self):
         gate = Gate(frozenset())

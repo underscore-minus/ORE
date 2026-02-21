@@ -6,6 +6,7 @@ v0.7 adds optional routing_hints and extract_args for intent-based routing.
 
 from __future__ import annotations
 
+import os
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -158,8 +159,40 @@ class ReadFileTool(Tool):
                 status="error",
                 metadata={"error_message": "Missing required argument: path=..."},
             )
+        # Path scope: only allow reads within CWD or below; reject .. and escape
+        p = Path(path_str)
+        if ".." in p.parts:
+            return ToolResult(
+                tool_name=self.name,
+                output="",
+                status="error",
+                metadata={
+                    "error_message": f"Path not allowed: path must not contain .. components ({path_str!r})"
+                },
+            )
         try:
-            content = Path(path_str).read_text(encoding="utf-8")
+            resolved = p.resolve()
+        except (OSError, RuntimeError):
+            return ToolResult(
+                tool_name=self.name,
+                output="",
+                status="error",
+                metadata={"error_message": f"Invalid path: {path_str!r}"},
+            )
+        cwd = Path(os.getcwd()).resolve()
+        try:
+            resolved.relative_to(cwd)
+        except ValueError:
+            return ToolResult(
+                tool_name=self.name,
+                output="",
+                status="error",
+                metadata={
+                    "error_message": f"Path not allowed: must be under current working directory ({path_str!r})"
+                },
+            )
+        try:
+            content = resolved.read_text(encoding="utf-8")
             return ToolResult(
                 tool_name=self.name,
                 output=content,

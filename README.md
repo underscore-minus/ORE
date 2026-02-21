@@ -1,6 +1,6 @@
 # ORE — Orchestrated Reasoning Engine
 
-**v1.0.0 — The Mainframe**
+**v1.0.1 — The Mainframe**
 
 ---
 
@@ -68,7 +68,7 @@ least one model pulled.
 **Install as a dependency** (from another project):
 
 ```bash
-pip install "git+https://github.com/underscore-minus/ORE.git@v1.0.0"
+pip install "git+https://github.com/underscore-minus/ORE.git@v1.0.1"
 # or latest from main:
 # pip install "git+https://github.com/underscore-minus/ORE.git"
 ```

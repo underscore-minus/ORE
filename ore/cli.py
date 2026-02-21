@@ -12,6 +12,7 @@ v0.9 adds --artifact-out / --artifact-in for chainable execution artifacts.
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -40,6 +41,29 @@ from .types import (
 
 # Commands that exit any REPL mode (case-insensitive)
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
+
+
+def _validate_output_path(path: str) -> Path:
+    """
+    Validate artifact output path. Rejects .. components; warns if outside cwd.
+    Returns resolved Path. Raises ValueError if path contains .. components.
+    Caller must skip validation when path == "-" (stdout).
+    """
+    p = Path(path)
+    if ".." in p.parts:
+        raise ValueError(
+            f"Artifact output path must not contain .. components: {path!r}"
+        )
+    resolved = p.resolve()
+    cwd = Path(os.getcwd()).resolve()
+    try:
+        resolved.relative_to(cwd)
+    except ValueError:
+        print(
+            f"Warning: artifact output path is outside working directory: {resolved}",
+            file=sys.stderr,
+        )
+    return resolved
 
 
 def _load_artifact_and_set_prompt(args: argparse.Namespace) -> None:
@@ -710,4 +734,9 @@ def run() -> None:
                 if args.artifact_out == "-":
                     print(artifact_json)
                 else:
-                    Path(args.artifact_out).write_text(artifact_json, encoding="utf-8")
+                    try:
+                        out_path = _validate_output_path(args.artifact_out)
+                        out_path.write_text(artifact_json, encoding="utf-8")
+                    except ValueError as e:
+                        print(str(e), file=sys.stderr)
+                        sys.exit(1)

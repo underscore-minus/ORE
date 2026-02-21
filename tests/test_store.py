@@ -96,3 +96,49 @@ class TestFileSessionStore:
 
         loaded = store.load("ow")
         assert len(loaded.messages) == 1
+
+
+# C-2 session name path traversal: validation rejects bad names
+@pytest.mark.invariant
+def test_session_name_with_slash_rejected(store):
+    """Invariant: session name containing / is rejected."""
+    with pytest.raises(ValueError, match="Invalid session name|/|\\\\|\\.\\.|outside"):
+        store.save(Session(), "a/b")
+    with pytest.raises(ValueError, match="Invalid session name|/|\\\\|\\.\\.|outside"):
+        store.load("a/b")
+
+
+@pytest.mark.invariant
+def test_session_name_with_dotdot_rejected(store):
+    """Invariant: session name containing .. is rejected."""
+    with pytest.raises(ValueError, match="Invalid session name|/|\\\\|\\.\\.|outside"):
+        store.save(Session(), "..")
+    with pytest.raises(ValueError, match="Invalid session name|/|\\\\|\\.\\.|outside"):
+        store.save(Session(), "a/../b")
+
+
+@pytest.mark.invariant
+def test_session_name_with_backslash_rejected(store):
+    """Invariant: session name containing \\ is rejected."""
+    with pytest.raises(ValueError, match="Invalid session name|/|\\\\|\\.\\.|outside"):
+        store.save(Session(), "a\\b")
+
+
+@pytest.mark.invariant
+def test_session_name_empty_rejected(store):
+    """Invariant: empty session name is rejected."""
+    with pytest.raises(ValueError, match="empty"):
+        store.save(Session(), "")
+    with pytest.raises(ValueError, match="empty"):
+        store.save(Session(), "   ")
+
+
+@pytest.mark.invariant
+def test_valid_session_name_accepted(store):
+    """Invariant: valid session name is accepted for save and load."""
+    session = Session()
+    session.messages.append(Message(role="user", content="hi"))
+    store.save(session, "valid_name")
+    loaded = store.load("valid_name")
+    assert loaded.id == session.id
+    assert len(loaded.messages) == 1

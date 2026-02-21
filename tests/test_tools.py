@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 
 from ore.gate import Permission
@@ -77,16 +80,62 @@ class TestReadFileTool:
         f = tmp_path / "foo.txt"
         f.write_text("hello world", encoding="utf-8")
         tool = ReadFileTool()
-        result = tool.run({"path": str(f)})
-        assert result.status == "ok"
-        assert result.output == "hello world"
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = tool.run({"path": "foo.txt"})
+            assert result.status == "ok"
+            assert result.output == "hello world"
+        finally:
+            os.chdir(old_cwd)
 
     def test_run_missing_file(self):
         tool = ReadFileTool()
-        result = tool.run({"path": "/nonexistent/path/12345"})
+        # Use path under cwd so we reach the file-not-found path (not path validation)
+        result = tool.run({"path": "nonexistent_path_12345"})
         assert result.status == "error"
         assert "error_message" in result.metadata
         assert "not found" in result.metadata["error_message"].lower()
+
+    @pytest.mark.invariant
+    def test_read_file_dotdot_path_rejected(self):
+        """Invariant: path with .. components is rejected."""
+        tool = ReadFileTool()
+        result = tool.run({"path": "../../etc/passwd"})
+        assert result.status == "error"
+        assert "error_message" in result.metadata
+        assert ".." in result.metadata["error_message"].lower()
+
+    @pytest.mark.invariant
+    def test_read_file_absolute_path_outside_cwd_rejected(self):
+        """Invariant: absolute path outside CWD is rejected."""
+        tool = ReadFileTool()
+        cwd = Path(os.getcwd()).resolve()
+        # Path under parent of cwd is outside cwd
+        parent_file = cwd.parent / "file_outside_cwd_ore_test"
+        try:
+            parent_file.write_text("x")
+            res = tool.run({"path": str(parent_file)})
+            assert res.status == "error"
+            assert "error_message" in res.metadata
+        finally:
+            if parent_file.exists():
+                parent_file.unlink()
+
+    @pytest.mark.invariant
+    def test_read_file_within_cwd_allowed(self, tmp_path):
+        """Invariant: path under CWD is allowed."""
+        f = tmp_path / "allowed.txt"
+        f.write_text("allowed content", encoding="utf-8")
+        tool = ReadFileTool()
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = tool.run({"path": "allowed.txt"})
+            assert result.status == "ok"
+            assert result.output == "allowed content"
+        finally:
+            os.chdir(old_cwd)
 
 
 class TestToolRegistry:

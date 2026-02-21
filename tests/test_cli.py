@@ -636,6 +636,53 @@ class TestArtifactCli:
         assert data["input"]["prompt"] == "hello"
         assert data["output"]["content"] == "fake response"
 
+    def test_artifact_out_stdout_always_allowed(self, capsys):
+        """--artifact-out - (stdout) is always allowed; no path validation."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", "-"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["artifact_version"] == "ore.exec.v1"
+
+    def test_artifact_out_cwd_path_allowed(self, tmp_path, capsys):
+        """--artifact-out to a path under cwd is allowed."""
+        out_path = tmp_path / "artifact.json"
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", str(out_path)],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        data = json.loads(out_path.read_text())
+        assert data["artifact_version"] == "ore.exec.v1"
+        assert data["input"]["prompt"] == "hello"
+
+    def test_artifact_out_dotdot_path_rejected(self, capsys):
+        """--artifact-out with .. in path is rejected (exit 1)."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hello", "--artifact-out", "../../etc/artifact.json"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    with pytest.raises(SystemExit) as exc_info:
+                        from ore.cli import run
+
+                        run()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert ".." in err or "Artifact" in err
+
     def test_artifact_in_reproduces_prompt(self, tmp_path, capsys):
         """--artifact-in runs single-turn with artifact's input.prompt."""
         artifact_path = tmp_path / "prev.json"
