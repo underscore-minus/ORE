@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.9.1)
+# ORE Mechanical Invariants (v1.0)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 
@@ -121,7 +121,7 @@ For each `ORE.execute()` or `ORE.execute_stream()` invocation:
 
 ---
 
-## Interface Lock Invariants (v0.9.1)
+## Interface Lock Invariants (v1.0)
 
 These invariants freeze the **consumer-facing surface** documented in [interface-lock.md](interface-lock.md). Additions are allowed; removals or incompatible changes are not.
 

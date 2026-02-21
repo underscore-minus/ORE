@@ -1,4 +1,4 @@
-"""Surface/invariant tests for frozen public API (interface lock v0.9.1)."""
+"""Surface/invariant tests for frozen public API (interface lock v1.0)."""
 
 from __future__ import annotations
 

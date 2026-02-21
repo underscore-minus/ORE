@@ -1,4 +1,4 @@
-# ORE Interface Lock (v0.9.1)
+# ORE Interface Lock (v1.0)
 
 This document is the **frozen contract** for ORE consumers. It enumerates CLI flags, exit codes, schemas, and public API surfaces that must not be broken. Additions are allowed; removals or incompatible changes are not. For rationale and invariants, see [foundation.md](foundation.md) and [invariants.md](invariants.md).
 

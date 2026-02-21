@@ -1,6 +1,6 @@
-# ORE Architecture (v0.9.1)
+# ORE Architecture (v1.0)
 
-**Version**: v0.9.1 (Interface Lock — Chainable Execution Artifacts)
+**Version**: v1.0 (The Mainframe — Structurally Complete)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 
@@ -426,7 +426,7 @@ Tests live in `tests/`; CI (`.github/workflows/ci.yml`) runs on push/PR to `main
 - **`README.md`** — Developer-facing quick start and testing/CI notes.
 - **`docs/foundation.md`** — Foundation invariants and versioning rules.
 - **`docs/invariants.md`** — Mechanical invariants (loop, session, CLI); testable guarantees.
-- **`docs/architecture.md`** (this file) — High-level architectural overview for v0.9.
+- **`docs/architecture.md`** (this file) — High-level architectural overview for v1.0.
 - **`docs/skills.md`** — Locked design decisions for v0.8 skill activation.
 - **`docs/artifact-schema.md`** — Execution artifact schema and non-goals (v0.9).
 - **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router, skills); no live Ollama required.

@@ -63,18 +63,6 @@ Chaining via data, not runtime coupling. Schema documented in
 `docs/artifact-schema.md`. Existing `--json` workflows remain backward
 compatible. All core invariants preserved and test-enforced.
 
----
-
-## In Progress
-
-**feature/datetime-tool — Parked**
-DateTime tool complete and tested. Held pending v1.0 feature decisions.
-Branch: `feature/datetime-tool`.
-
----
-
-## Remaining Engine Versions
-
 **v0.9.1 — Interface Lock**
 *The stability declaration.*
 
@@ -94,8 +82,6 @@ Rules after this point:
 - Additions are allowed; mutations are not
 - Every contract has a test that enforces it
 
----
-
 **v1.0 — The Mainframe**
 *Structurally complete. Not feature complete.*
 
@@ -111,6 +97,14 @@ At this point:
 - Orchestration is external
 
 The engine does not grow. It hosts growth.
+
+---
+
+## In Progress
+
+**feature/datetime-tool — Parked**
+DateTime tool complete and tested. Held pending v1.0 feature decisions.
+Branch: `feature/datetime-tool`.
 
 ---
 

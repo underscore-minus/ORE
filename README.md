@@ -1,90 +1,298 @@
-# ORE
+# ORE — Orchestrated Reasoning Engine
 
-**Orchestrated Reasoning Engine** — a CLI-first, local orchestration layer around a single invariant: **Input → Reasoner → Output**. ORE runs the loop via [Ollama](https://ollama.com), injects an explicit persona (Aya), and keeps all state visible: sessions, tools, and outputs are passed or flagged explicitly. No hidden accumulation, no implicit steps.
-
-ORE is not a generic chatbot wrapper. It is a minimal orchestration primitive: one reasoner call per turn, append-only session history, optional tool runs gated by permissions, and structured or streamed output. The design is built to stay testable and scriptable while evolving toward chainable execution artifacts and a locked interface (see [docs/roadmap.md](docs/roadmap.md)).
+**v1.0.0 — The Mainframe**
 
 ---
 
-## What ORE does
+## What ORE Is
 
-- **Single loop** — Every turn is: build message list (system + optional tool results + optional session history + user) → call reasoner once → return response. Session is passed in; tool results are turn-scoped and never stored.
-- **Modes** — Single-turn, interactive REPL (stateless), conversational REPL (in-memory session), and persisted sessions (save/resume to `~/.ore/sessions/`).
-- **Tools (v0.6)** — Optional pre-reasoning step: run a built-in tool (e.g. `echo`, `read-file`) via `--tool`; a gate enforces permissions (`--grant`). Tool output is injected into the turn only; it is never written into the session.
-- **Routing (v0.7)** — Opt-in `--route`: select a tool or skill by intent (keyword matching). Routing info is printed to stderr; with `--json`, the response includes a `routing` key. No extra LLM call.
-- **Skills (v0.8)** — Filesystem-based instruction modules (`~/.ore/skills/`). Activate via `--skill NAME` or `--route`. YAML frontmatter for metadata; three-level loading (metadata, instructions, resources). Turn-scoped, never stored in session.
-- **Output** — Plain text, streamed tokens (`--stream`), or structured JSON (`--json`). Stdin can supply the prompt when not in REPL mode.
-- **Artifacts (v0.9)** — `--artifact-out` emits a chainable execution artifact; `--artifact-in` consumes one and runs a single turn with its prompt. Single-turn only.
-
-Persona, session lifecycle, and tool execution are all explicit in the CLI and in the orchestrator API. See [docs/architecture.md](docs/architecture.md) and [docs/foundation.md](docs/foundation.md) for invariants and extension rules.
+ORE is a minimal, local-first reasoning engine built around one irreducible loop:
+**Input → Reasoner → Output**. It runs via [Ollama](https://ollama.com), keeps all
+state explicit and visible, and enforces that every turn produces exactly one
+reasoner call. Nothing is hidden: sessions are passed as arguments, tool results
+are turn-scoped and never stored, and routing decisions are printed to stderr. ORE
+is the mainframe — the stable, auditable primitive that agents, workflows, and
+interfaces are built on top of. It does not grow. It hosts growth.
 
 ---
 
-## Quick start
+## What ORE Is Not
+
+These boundaries are explicit and permanent.
+
+- **Not an agent framework.** ORE does not orchestrate other instances of itself,
+  manage agent lifecycles, or maintain implicit goal state.
+- **Not a workflow engine.** Chaining is done via data (execution artifacts), not
+  runtime coupling. ORE does not know what happens after its output.
+- **Not a chatbot shell.** The CLI is a thin dispatch layer over a structured API.
+  Persona, session, and tool logic are wired explicitly in code.
+- **Not feature complete.** Multi-backend support, a visual shell, and platform
+  tooling are post-v1.0 work (see `docs/roadmap.md`).
+- **Structurally complete.** The loop, the contracts, the invariants, and the
+  interfaces are locked. Additions are permitted; mutations are not.
+
+---
+
+## The Version Story
+
+Each version added one conceptual dimension. The engine was built in layers,
+and each layer is still visible.
+
+| Version | What it added |
+|---------|---------------|
+| v0.1 | The loop: single-turn, stateless. Input → Reasoner → Output. |
+| v0.2 | Temporal continuity: interactive REPL, still stateless per turn. |
+| v0.2.1 | Semantics lock: "interactive" explicitly defined as non-conversational. |
+| v0.3 | Cognitive continuity: session history, explicit append-only state. |
+| v0.3.1 | Streaming and metadata: token-by-token output; response schema locked. |
+| v0.4 | Persistent sessions: opt-in file-based save/resume; core unchanged. |
+| v0.4.1 | Hardening: mechanical invariants documented and test-enforced. |
+| v0.4.2 | Invariants polish: canonical API naming; non-invariants explicitly listed. |
+| v0.5 | Composable output: `--json` flag; stdin as signal source. The pipe exists. |
+| v0.6 | Tool execution + gate: default-deny permissions; tool results turn-scoped. |
+| v0.6.1 | Black formatting fix; version bump. |
+| v0.7 | Routing / intent detection: rule-based, no extra LLM call; decision visible. |
+| v0.7.1 | Design decisions for skill activation documented before code written. |
+| v0.8 | Skill activation: filesystem-based instructions; three-level loading; turn-scoped. |
+| v0.9 | Chainable execution artifacts: `--artifact-out` / `--artifact-in`; data-only chaining. |
+| v0.9.1 | Interface lock: CLI flags, JSON schema, exit codes, and `__all__` frozen. |
+| v1.0 | The Mainframe: version declaration, docs cleanup, structurally complete. |
+
+---
+
+## Installation
+
+**Requires:** Python 3.10, [Ollama](https://ollama.com) running locally with at
+least one model pulled.
 
 ```bash
-# Clone and enter
-git clone https://github.com/underscore-minus/ORE.git && cd ORE
+# Clone
+git clone https://github.com/underscore-minus/ORE.git
+cd ORE
 
-# Setup (Python 3.10)
-python3.10 -m venv .venv && source .venv/bin/activate
+# Create and activate virtual environment
+python3.10 -m venv .venv
+source .venv/bin/activate       # macOS / Linux
+# .venv\Scripts\activate        # Windows
+
+# Install runtime dependencies
 pip install -r requirements.txt
 
-# Ollama must be running; pull a model first: ollama pull llama3.2
-python main.py "Explain the concept of an irreducible loop."
+# Pull a model (if you haven't already)
+ollama pull llama3.2
+
+# Run
+python main.py "What is an irreducible loop?"
+```
+
+Dev dependencies (pytest, black):
+
+```bash
+pip install -r requirements-dev.txt
 ```
 
 ---
 
-## Commands
+## Usage
 
-| Command | Description |
-|---------|-------------|
-| `python main.py "Your question"` | Single turn: ask Aya (auto-picks a model) |
-| `python main.py --interactive` or `-i` | Interactive REPL — each turn stateless, no history |
-| `python main.py --conversational` or `-c` | Conversational REPL — session in memory across turns |
-| `python main.py --save-session NAME` | Conversational REPL, persist to `~/.ore/sessions/` after each turn |
-| `python main.py --resume-session NAME` | Resume a saved session (implies conversational) |
-| `python main.py --list-models` | List installed Ollama models and exit |
-| `python main.py --list-tools` | List available tools and required permissions, then exit |
-| `python main.py "Question" --model llama3.2` | Use a specific model |
-| `python main.py "Question" --tool echo --tool-arg msg=hi` | Run a tool before reasoning (e.g. echo; no permission needed) |
-| `python main.py "say back hello" --route` | Route by intent: match prompt to a tool or skill; routing on stderr |
-| `python main.py "repeat" --route --route-threshold 0.3` | Lower confidence threshold (default 0.5) to accept weaker matches |
-| `python main.py "Question" --skill my-skill` | Activate a skill (inject instructions into context) |
-| `python main.py --list-skills` | List discovered skills from `~/.ore/skills/` and exit |
-| `python main.py "Summarize" --tool read-file --tool-arg path=/path/to/file --grant filesystem-read` | Run a permissioned tool; grant required permission |
-| `python main.py --stream` or `-s` | Stream output token-by-token (any mode) |
-| `python main.py --verbose` or `-v` | Show response metadata (ID, model, token counts) |
-| `python main.py "Question" --json` or `-j` | Output structured JSON (single-turn only) |
-| `python main.py "Question" --artifact-out artifact.json` | Emit execution artifact to file |
-| `python main.py "Question" --artifact-out -` | Emit artifact JSON to stdout (single-turn) |
-| `python main.py --artifact-in artifact.json` | Run single turn with prompt from artifact |
-| `echo "Question" \| python main.py` | Pipe prompt via stdin (single-turn) |
+### Modes
+
+| Mode | Invocation | Session | Notes |
+|------|-----------|---------|-------|
+| Single-turn | `python main.py "prompt"` | None | Stateless. Default. |
+| Interactive REPL | `python main.py -i` | None | Many turns, each stateless. |
+| Conversational REPL | `python main.py -c` | In-memory | Turns accumulate in a shared session. |
+| Persistent session | `python main.py --save-session NAME` | File-backed | Saved to `~/.ore/sessions/` after each turn. |
+| Resume session | `python main.py --resume-session NAME` | File-backed | Load a prior session; implies `-c`. |
+
+### Key flags
+
+```bash
+# Model selection
+python main.py "prompt" --model llama3.2
+
+# List available Ollama models
+python main.py --list-models
+
+# Structured JSON output (single-turn only)
+python main.py "prompt" --json
+
+# Stream tokens as they arrive
+python main.py "prompt" --stream
+
+# Verbose: show response metadata (ID, model, token counts)
+python main.py "prompt" --verbose
+
+# Read prompt from stdin
+echo "What is ORE?" | python main.py
+```
+
+### Tools
+
+Tools run a pre-reasoning step and inject their output into the current turn.
+Tool results are turn-scoped — they are never stored in the session.
+
+```bash
+# Built-in echo tool (no permissions required)
+python main.py "What did the tool say?" --tool echo --tool-arg msg="hello"
+
+# Read a file into context (requires filesystem-read permission)
+python main.py "Summarize this" \
+  --tool read-file --tool-arg path=/path/to/file \
+  --grant filesystem-read
+
+# List available tools and their required permissions
+python main.py --list-tools
+```
+
+### Skills
+
+Skills are filesystem-based instruction modules stored in `~/.ore/skills/`.
+Activating a skill injects its instructions as `role="system"` messages before
+tool results. Skills are turn-scoped and never stored in the session.
+
+```bash
+# Activate a skill by name
+python main.py "Review this code" --skill my-skill
+
+# List discovered skills
+python main.py --list-skills
+```
+
+Skill format: `~/.ore/skills/<name>/SKILL.md` with YAML frontmatter
+(`name`, `description`, optional `hints`) followed by instruction body.
+Optional resources live in `<skill-dir>/resources/`.
+
+### Routing
+
+`--route` uses keyword matching to select a tool or skill from the prompt.
+No extra LLM call. The routing decision is printed to stderr.
+
+```bash
+# Auto-select a tool or skill based on prompt keywords
+python main.py "read the config file" --route
+
+# Lower the confidence threshold (default 0.5)
+python main.py "read something" --route --route-threshold 0.3
+
+# Route + JSON: routing decision appears in the JSON payload
+python main.py "echo hello" --route --json
+```
+
+`--route` and `--tool` are mutually exclusive.
+
+### Artifacts
+
+An execution artifact is a self-describing JSON record of one ORE turn.
+Chaining is via data, not runtime coupling.
+
+```bash
+# Emit an artifact to a file
+python main.py "Explain the loop" --artifact-out result.json
+
+# Emit to stdout (suppresses normal response)
+python main.py "Explain the loop" --artifact-out -
+
+# Consume an artifact and run one turn with its prompt
+python main.py --artifact-in result.json
+
+# Pipeline: emit then consume
+python main.py "First prompt" --artifact-out - | python main.py --artifact-in -
+```
+
+Artifact schema: see `docs/artifact-schema.md`.
 
 ---
 
-## Layout
+## Architecture in One Paragraph
 
-- **`ore/`** — Core package: `types`, `reasoner`, `core`, `cli`, `models`, `store`, `tools`, `gate`, `router`, `skills`
-- **`ore/prompts/`** — Aya system persona (injected by orchestrator)
-- **`tests/`** — Pytest suite (types, store, core, cli, reasoner, models, tools, gate, router, skills)
-- **`main.py`** — Entry point
-- **`docs/`** — Foundation, architecture, roadmap, invariants, skills, artifact-schema
-- **`requirements.txt`** — Runtime deps; **`requirements-dev.txt`** — pytest, black
+`main.py` loads the environment and delegates to `ore/cli.py`, which owns argument
+parsing, mode dispatch, session lifecycle, tool execution, and routing. The CLI
+passes a clean message list to `ore/core.py` (the orchestrator), which constructs
+the turn: system persona + optional skill context + optional tool results + optional
+session history + user message. The orchestrator calls a `Reasoner` exactly once
+and returns a `Response`. `ore/reasoner.py` holds the abstract `Reasoner` base
+class and the default `AyaReasoner` (Ollama-backed). All data flows through typed
+contracts in `ore/types.py`. Session persistence lives in `ore/store.py`. Tools,
+their permission gate, the intent router, and the skill loader are in
+`ore/tools.py`, `ore/gate.py`, `ore/router.py`, and `ore/skills.py` respectively.
+Nothing in the engine knows about the CLI, the persona, or the session — those are
+wired at the edges.
+
+---
+
+## Docs Index
+
+| File | Contents |
+|------|----------|
+| `docs/foundation.md` | Core invariants, extension rules, versioning philosophy, and the permanent guiding question. Start here. |
+| `docs/invariants.md` | Mechanical, testable guarantees (loop, session, tools, routing, skills, artifacts, interface lock) with test references. |
+| `docs/interface-lock.md` | Frozen consumer contracts: every CLI flag, exit code, JSON schema, Python public API, and data contract field. |
+| `docs/architecture.md` | Full architectural walkthrough: modules, data flows, execution modes, session semantics, and extension patterns. |
+| `docs/artifact-schema.md` | Execution artifact schema, field definitions, CLI contract, and forward-compatibility rules. |
+| `docs/skills.md` | Locked design decisions for skill activation (injection order, message role, simultaneous tool+skill, resources). |
+| `docs/roadmap.md` | Complete version history (v0.1–v1.0), post-v1.0 platform plans, and the seven permanent design principles. |
+
+---
+
+## Extending ORE
+
+### Adding a new tool
+
+Implement the `Tool` abstract base class from `ore/tools.py`. A tool must define
+`name` (str), `description` (str), `required_permissions` (list of `Permission`),
+and `run(args: dict) -> ToolResult`. Optionally implement `routing_hints()` to
+make the tool selectable via `--route`, and `extract_args(prompt)` to parse
+arguments from natural language. Once implemented, register it in `TOOL_REGISTRY`
+in `ore/tools.py` under a string key. The CLI will discover it automatically via
+`--tool KEY` and `--list-tools`.
+
+### Adding a new reasoner backend
+
+Implement the `Reasoner` abstract base class from `ore/reasoner.py`. A reasoner
+must implement `reason(messages: List[Message]) -> Response`. Optionally override
+`stream_reason(messages)` for token-by-token streaming — the default fallback
+delegates to `reason()` and yields the full response in one chunk. Wire the new
+reasoner in at instantiation: `ORE(YourReasoner(model_id))`. The orchestrator,
+session, and CLI layer have no knowledge of the backend and require no changes.
+Reasoners must be persona-agnostic: they receive an ordered list of `Message`
+objects and return a `Response`, nothing more.
+
+---
+
+## Design Principles
+
+These do not change at any version.
+
+1. **The loop is irreducible.** Input → Reasoner → Output. No hidden steps.
+2. **State is explicit.** If it exists, it is named and visible.
+3. **Complexity lives at the edges.** Core stays boring.
+4. **One reasoner call per turn.** Always.
+5. **The engine produces objects, not behavior.**
+6. **Backward clarity beats forward cleverness.**
+7. **Each version adds one thing.**
 
 ---
 
 ## Testing and CI
 
 ```bash
-pip install -r requirements-dev.txt
+# Run the full suite
 pytest -v
-black --check .   # enforce formatting
+
+# Run only invariant tests
+pytest -m invariant
+
+# Check formatting
+black --check .
 ```
 
-CI runs on push/PR to `main`: Python 3.10, `black --check`, then `pytest`. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+178 tests, 47 invariant. CI runs on push/PR to `main`: Python 3.10,
+`black --check`, then `pytest`. See `.github/workflows/ci.yml`.
 
 ---
 
-Session persistence (v0.4) and structured output/stdin (v0.5) are opt-in. The tool & gate framework (v0.6) adds controlled, explicit side effects before reasoning; tool results are turn-scoped and never stored in the session. Routing (v0.7) adds intent-based tool and skill selection via `--route` (rule-based; no extra LLM call). Skills (v0.8) inject filesystem-based instructions into context via `--skill NAME`; turn-scoped, never stored in session. Artifacts (v0.9) enable chainable execution via `--artifact-out` and `--artifact-in` (schema in `docs/artifact-schema.md`). Aya's persona lives in `ore/prompts/aya.txt` and is injected by the orchestrator in `ore/core.py`.
+*The film which produces the movie is the AI.*  
+*The projector is ORE.*  
+*The mainframe runs the suit.*  
+*The pilot decides.*

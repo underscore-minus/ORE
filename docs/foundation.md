@@ -1,4 +1,4 @@
-ORE — Foundation Document (v0.9.1)
+ORE — Foundation Document (v1.0)
 
 Purpose
 
@@ -57,7 +57,7 @@ v0.1 assumes local execution via Ollama.
 
 Remote backends are an extension, not a replacement.
 
-What Exists in v0.9
+What Exists in v1.0
 
 Runtime Model
 
@@ -197,6 +197,8 @@ Complexity lives at the edges, not in the loop.
 Backward clarity beats forward cleverness
 
 Prefer obvious code over abstract frameworks.
+
+ORE v1.0 is structurally complete. The engine does not grow. It hosts growth.
 
 Versioning Philosophy
 

@@ -1,2 +1,2 @@
-# Single source of truth for ORE package version (interface lock v0.9.1).
-__version__ = "0.9.1"
+# Single source of truth for ORE package version.
+__version__ = "1.0.0"
