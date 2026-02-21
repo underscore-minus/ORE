@@ -16,6 +16,12 @@ from ore.tools import TOOL_REGISTRY
 from ore.types import RoutingTarget
 
 
+@pytest.mark.invariant
+def test_default_confidence_threshold_value():
+    """Invariant: DEFAULT_CONFIDENCE_THRESHOLD is 0.5."""
+    assert DEFAULT_CONFIDENCE_THRESHOLD == 0.5
+
+
 class TestBuildTargetsFromRegistry:
     def test_builds_list_from_registry(self):
         targets = build_targets_from_registry(TOOL_REGISTRY)

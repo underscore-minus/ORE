@@ -6,8 +6,19 @@ from types import SimpleNamespace
 from typing import List
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ore.reasoner import AyaReasoner, Reasoner
 from ore.types import Message, Response
+
+
+@pytest.mark.invariant
+def test_reasoner_abc_has_required_members():
+    """Invariant: Reasoner ABC defines reason() and stream_reason()."""
+    assert hasattr(Reasoner, "reason") and callable(getattr(Reasoner, "reason"))
+    assert hasattr(Reasoner, "stream_reason") and callable(
+        getattr(Reasoner, "stream_reason")
+    )
 
 
 class TestReasonerABC:

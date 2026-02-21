@@ -1,4 +1,4 @@
-# ORE Mechanical Invariants (v0.9)
+# ORE Mechanical Invariants (v0.9.1)
 
 This document lists the **mechanical invariants** of ORE — concrete, testable guarantees that must hold. For philosophical foundations and extension rules, see [foundation.md](foundation.md). For architectural design, see [architecture.md](architecture.md).
 
@@ -121,6 +121,36 @@ For each `ORE.execute()` or `ORE.execute_stream()` invocation:
 
 ---
 
+## Interface Lock Invariants (v0.9.1)
+
+These invariants freeze the **consumer-facing surface** documented in [interface-lock.md](interface-lock.md). Additions are allowed; removals or incompatible changes are not.
+
+**CLI flag surface** — The parser has at least the 20 flags (1 positional + 19 named) with their documented types and defaults. New flags may be added.
+
+**Exit codes** — Exit 0 for successful `--list-models`, `--list-tools`, `--list-skills`; exit 1 for application errors (unknown tool/skill, GateError, invalid artifact, etc.); exit 2 for usage errors (parser.error).
+
+**`--json` output** — Single-turn `--json` stdout has exactly the 5 base keys (`id`, `model_id`, `content`, `timestamp`, `metadata`). With `--route`, the `routing` object has exactly the 7 documented keys.
+
+**`ore.__all__`** — The minimum set of public names is frozen; all must be importable from `ore`. New names may be added.
+
+**Permission enum** — `Permission` has exactly the four values: `filesystem-read`, `filesystem-write`, `shell`, `network`.
+
+**Data contract fields** — Message, Response, Session, ToolResult, SkillMetadata, RoutingTarget, RoutingDecision, ExecutionArtifact* dataclasses have at least the documented field sets.
+
+**Artifact schema** — `to_dict()` produces exact top-level keys; `ARTIFACT_VERSION == "ore.exec.v1"`; unknown top-level keys are tolerated on parse.
+
+**Session file format** — Serialized session JSON has exact top-level keys (`id`, `created_at`, `messages`) and each message has `role`, `content`, `id`, `timestamp`.
+
+**Tool ABC** — Tool defines required `name`, `description`, `required_permissions`, `run(args)`; optional `routing_hints`, `extract_args`.
+
+**Reasoner ABC** — Reasoner defines `reason(messages)` and `stream_reason(messages)`.
+
+**Router constant** — `DEFAULT_CONFIDENCE_THRESHOLD == 0.5`.
+
+**How we test:** `tests/test_surface.py` (__all__); `tests/test_cli.py` — `TestCliFrozenSurface`, `TestJsonOutput::test_json_output_exact_base_keys`, `TestRouteCli::test_route_with_json_routing_object_exact_keys`, `TestExitCodes`; `tests/test_gate.py` — `test_permission_enum_exact_values`; `tests/test_types.py` — `test_dataclass_field_contracts`, `TestExecutionArtifact` (schema/version/forward-compat); `tests/test_store.py` — `test_session_serialization_exact_keys`; `tests/test_tools.py` — `test_tool_abc_has_required_members`; `tests/test_reasoner.py` — `test_reasoner_abc_has_required_members`; `tests/test_router.py` — `test_default_confidence_threshold_value`.
+
+---
+
 ## Non-invariants (explicitly not guaranteed)
 
 The following are **not** invariants; we do not guarantee them:
@@ -135,4 +165,4 @@ This prevents future contributors from treating these as upgradable invariants.
 
 ## Tests Marked as Invariant
 
-Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py`, `tests/test_cli.py`, `tests/test_gate.py`, `tests/test_router.py`, and artifact tests in `tests/test_cli.py` for the full suite.
+Tests that encode these guarantees are marked with `@pytest.mark.invariant` and are part of the main pytest run. Breaking any invariant will cause CI to fail. Run invariant tests specifically with: `pytest -m invariant`. See `tests/test_core.py`, `tests/test_cli.py`, `tests/test_gate.py`, `tests/test_router.py`, `tests/test_surface.py`, `tests/test_types.py`, `tests/test_store.py`, `tests/test_tools.py`, `tests/test_reasoner.py`, and artifact/mode validation tests in `tests/test_cli.py` for the full suite.

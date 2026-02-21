@@ -13,33 +13,53 @@ from .conftest import FakeReasoner
 
 
 def _parse(args: list[str]) -> argparse.Namespace:
-    """Import and invoke ORE's arg parser in isolation (no model calls)."""
-    # We reconstruct the parser from cli.run's source to avoid side effects.
-    # Instead, import the module and call parse_args via a subprocess-style check.
-    from ore.cli import run  # noqa: F401 — ensures import works
+    """Parse args using ORE's real CLI parser (no model calls)."""
+    from ore.cli import _build_parser
 
-    parser = argparse.ArgumentParser(description="ORE v0.9 CLI")
-    parser.add_argument("prompt", type=str, nargs="?", default=None)
-    parser.add_argument("--model", type=str, default=None)
-    parser.add_argument("--list-models", action="store_true")
-    parser.add_argument("--interactive", "-i", action="store_true")
-    parser.add_argument("--conversational", "-c", action="store_true")
-    parser.add_argument("--save-session", type=str, default=None)
-    parser.add_argument("--resume-session", type=str, default=None)
-    parser.add_argument("--stream", "-s", action="store_true")
-    parser.add_argument("--verbose", "-v", action="store_true")
-    parser.add_argument("--json", "-j", action="store_true")
-    parser.add_argument("--tool", type=str, default=None)
-    parser.add_argument("--tool-arg", action="append", default=[])
-    parser.add_argument("--list-tools", action="store_true")
-    parser.add_argument("--grant", action="append", default=[])
-    parser.add_argument("--route", action="store_true")
-    parser.add_argument("--route-threshold", type=float, default=0.5)
-    parser.add_argument("--skill", type=str, default=None)
-    parser.add_argument("--list-skills", action="store_true")
-    parser.add_argument("--artifact-out", type=str, nargs="?", const="-", default=None)
-    parser.add_argument("--artifact-in", type=str, default=None)
-    return parser.parse_args(args)
+    return _build_parser().parse_args(args)
+
+
+# Minimum CLI flag surface (interface lock): dest -> default. New flags allowed; these must exist.
+_CLI_FLAG_SURFACE = {
+    "prompt": None,
+    "model": None,
+    "list_models": False,
+    "interactive": False,
+    "conversational": False,
+    "save_session": None,
+    "resume_session": None,
+    "stream": False,
+    "verbose": False,
+    "json": False,
+    "tool": None,
+    "tool_arg": [],
+    "list_tools": False,
+    "grant": [],
+    "route": False,
+    "route_threshold": 0.5,
+    "skill": None,
+    "list_skills": False,
+    "artifact_out": None,
+    "artifact_in": None,
+}
+
+
+class TestCliFrozenSurface:
+    """Invariant tests: CLI parser has at least the frozen flag set with correct defaults."""
+
+    @pytest.mark.invariant
+    def test_cli_parser_has_minimum_flag_surface(self):
+        """Invariant: parser has at least these flags with documented types/defaults."""
+        from ore.cli import _build_parser
+
+        parser = _build_parser()
+        by_dest = {a.dest: a for a in parser._actions if a.dest is not None}
+        for dest, expected_default in _CLI_FLAG_SURFACE.items():
+            assert dest in by_dest, f"Missing CLI flag/option: {dest}"
+            actual_default = getattr(by_dest[dest], "default", None)
+            assert (
+                actual_default == expected_default
+            ), f"Flag {dest}: expected default {expected_default!r}, got {actual_default!r}"
 
 
 class TestArgParsing:
@@ -178,8 +198,30 @@ class TestModeValidation:
         assert "route" in err.lower() and "tool" in err.lower()
 
 
+# Exact key sets for --json output (interface lock). New keys may be added; these must exist.
+_JSON_BASE_KEYS = frozenset({"id", "model_id", "content", "timestamp", "metadata"})
+_JSON_ROUTING_KEYS = frozenset(
+    {"target", "target_type", "confidence", "args", "reasoning", "id", "timestamp"}
+)
+
+
 class TestJsonOutput:
     """Smoke tests for --json output and stdin ingestion."""
+
+    @pytest.mark.invariant
+    def test_json_output_exact_base_keys(self, capsys):
+        """Invariant: single-turn --json has exactly the 5 base keys (no extras)."""
+        with patch("ore.cli.argparse._sys.argv", ["ore", "hello", "--json"]):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert (
+            set(data.keys()) == _JSON_BASE_KEYS
+        ), f"Expected base keys {_JSON_BASE_KEYS}, got {set(data.keys())}"
 
     def test_json_output_keys(self, capsys):
         """Single-turn with --json produces valid JSON with required keys."""
@@ -191,11 +233,7 @@ class TestJsonOutput:
                     run()
         out = capsys.readouterr().out
         data = json.loads(out)
-        assert "id" in data
-        assert "model_id" in data
-        assert "content" in data
-        assert "timestamp" in data
-        assert "metadata" in data
+        assert _JSON_BASE_KEYS <= set(data.keys())
 
     def test_piped_stdin_single_turn(self, capsys):
         """When stdin is non-TTY and no prompt arg, read prompt from stdin."""
@@ -211,6 +249,59 @@ class TestJsonOutput:
         out = capsys.readouterr().out
         data = json.loads(out)
         assert data["content"] == "fake response"
+
+
+class TestExitCodes:
+    """Invariant tests: CLI exit code contract (0=success, 1=app error, 2=usage)."""
+
+    @pytest.mark.invariant
+    def test_list_tools_exits_0(self, capsys):
+        """Invariant: --list-tools exits 0."""
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--list-tools"]):
+            with pytest.raises(SystemExit) as exc_info:
+                from ore.cli import run
+
+                run()
+        assert exc_info.value.code == 0
+
+    @pytest.mark.invariant
+    def test_list_skills_exits_0_when_empty(self, capsys):
+        """Invariant: --list-skills with no skills exits 0."""
+        with patch("ore.cli.argparse._sys.argv", ["ore", "--list-skills"]):
+            with patch("ore.cli.build_skill_registry", return_value={}):
+                with pytest.raises(SystemExit) as exc_info:
+                    from ore.cli import run
+
+                    run()
+        assert exc_info.value.code == 0
+
+    @pytest.mark.invariant
+    def test_unknown_tool_exits_1(self, capsys):
+        """Invariant: unknown --tool name exits 1."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hi", "--tool", "nonexistent-tool"],
+        ):
+            with patch("ore.cli.default_model", return_value="fake-model"):
+                with pytest.raises(SystemExit) as exc_info:
+                    from ore.cli import run
+
+                    run()
+        assert exc_info.value.code == 1
+
+    @pytest.mark.invariant
+    def test_unknown_grant_exits_1(self, capsys):
+        """Invariant: unknown --grant value exits 1."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "hi", "--grant", "invalid-perm"],
+        ):
+            with patch("ore.cli.default_model", return_value="fake-model"):
+                with pytest.raises(SystemExit) as exc_info:
+                    from ore.cli import run
+
+                    run()
+        assert exc_info.value.code == 1
 
 
 class TestToolCli:
@@ -318,6 +409,26 @@ class TestRouteCli:
             or "reasoner only" in captured.err
             or "fallback" in captured.err.lower()
         )
+
+    @pytest.mark.invariant
+    def test_route_with_json_routing_object_exact_keys(self, capsys):
+        """Invariant: --route with --json: routing object has exact keys."""
+        with patch(
+            "ore.cli.argparse._sys.argv",
+            ["ore", "say back hi", "--route", "--json"],
+        ):
+            with patch("ore.cli.AyaReasoner", FakeReasoner):
+                with patch("ore.cli.default_model", return_value="fake-model"):
+                    from ore.cli import run
+
+                    run()
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "routing" in data
+        assert (
+            set(data["routing"].keys()) == _JSON_ROUTING_KEYS
+        ), f"Expected routing keys {_JSON_ROUTING_KEYS}, got {set(data['routing'].keys())}"
+        assert data["routing"]["target"] == "echo"
 
     def test_route_with_json_includes_routing_key(self, capsys):
         """--route with --json: stdout is valid JSON with 'routing' key."""

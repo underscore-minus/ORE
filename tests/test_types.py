@@ -3,17 +3,66 @@
 import json
 import time
 import uuid
+from dataclasses import fields
 
 import pytest
 
 from ore.types import (
     ARTIFACT_VERSION,
     ExecutionArtifact,
+    ExecutionArtifactContinuation,
+    ExecutionArtifactInput,
+    ExecutionArtifactOutput,
     Message,
     Response,
     RoutingDecision,
+    RoutingTarget,
     Session,
+    SkillMetadata,
+    ToolResult,
 )
+
+# Frozen field sets (interface lock). New fields may be added; these must exist.
+DATACLASS_FIELD_CONTRACTS = {
+    Message: frozenset({"role", "content", "id", "timestamp"}),
+    Response: frozenset({"content", "model_id", "id", "timestamp", "metadata"}),
+    Session: frozenset({"messages", "id", "created_at"}),
+    ToolResult: frozenset(
+        {"tool_name", "output", "status", "id", "timestamp", "metadata"}
+    ),
+    SkillMetadata: frozenset({"name", "description", "hints", "path"}),
+    RoutingTarget: frozenset({"name", "target_type", "description", "hints"}),
+    RoutingDecision: frozenset(
+        {"target", "target_type", "confidence", "args", "reasoning", "id", "timestamp"}
+    ),
+    ExecutionArtifactInput: frozenset(
+        {"prompt", "model_id", "mode", "routing", "tools", "skills"}
+    ),
+    ExecutionArtifactOutput: frozenset(
+        {"id", "content", "model_id", "timestamp", "metadata"}
+    ),
+    ExecutionArtifactContinuation: frozenset({"requested", "reason"}),
+    ExecutionArtifact: frozenset(
+        {
+            "artifact_version",
+            "execution_id",
+            "timestamp",
+            "input",
+            "output",
+            "continuation",
+        }
+    ),
+}
+
+
+@pytest.mark.invariant
+def test_dataclass_field_contracts():
+    """Invariant: each dataclass has at least the frozen set of field names."""
+    for cls, expected in DATACLASS_FIELD_CONTRACTS.items():
+        actual = frozenset(f.name for f in fields(cls))
+        assert (
+            expected <= actual
+        ), f"{cls.__name__}: expected fields {expected}, missing {expected - actual}"
 
 
 class TestMessage:
@@ -73,6 +122,35 @@ class TestSession:
 
 class TestExecutionArtifact:
     """Tests for v0.9 ExecutionArtifact schema and serialization."""
+
+    @pytest.mark.invariant
+    def test_artifact_schema_exact_top_level_keys(self):
+        """Invariant: to_dict() produces exact top-level keys."""
+        from ore.types import Response
+
+        resp = Response(content="ok", model_id="m1")
+        artifact = ExecutionArtifact.from_response(
+            response=resp, prompt="hi", model_id="m1"
+        )
+        data = artifact.to_dict()
+        expected = frozenset(
+            {
+                "artifact_version",
+                "execution_id",
+                "timestamp",
+                "input",
+                "output",
+                "continuation",
+            }
+        )
+        assert (
+            set(data.keys()) == expected
+        ), f"Artifact top-level keys expected {expected}, got {set(data.keys())}"
+
+    @pytest.mark.invariant
+    def test_artifact_version_constant(self):
+        """Invariant: ARTIFACT_VERSION is ore.exec.v1."""
+        assert ARTIFACT_VERSION == "ore.exec.v1"
 
     def test_from_response_to_dict_roundtrip(self):
         resp = Response(content="ok", model_id="m1")
@@ -134,8 +212,9 @@ class TestExecutionArtifact:
         with pytest.raises(ValueError, match="prompt|model_id"):
             ExecutionArtifact.from_dict(data)
 
+    @pytest.mark.invariant
     def test_forward_compat_tolerates_unknown_top_level_keys(self):
-        """Unknown top-level keys are tolerated for forward compatibility."""
+        """Invariant: unknown top-level keys are tolerated for forward compatibility."""
         data = {
             "artifact_version": ARTIFACT_VERSION,
             "execution_id": "x",

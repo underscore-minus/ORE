@@ -1,4 +1,4 @@
-# ORE Execution Artifact Schema (v0.9)
+# ORE Execution Artifact Schema (v0.9.1)
 
 Self-describing execution artifact produced by a single ORE turn. Enables chainable execution without runtime coupling: one execution produces an artifact; a platform consumes it and optionally feeds it into another.
 

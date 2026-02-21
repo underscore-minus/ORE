@@ -114,10 +114,11 @@ class TestOREExecute:
         assert len(sample_session.messages) == initial_len + 2
         assert [m.id for m in sample_session.messages[:initial_len]] == initial_ids
 
+    @pytest.mark.invariant
     def test_tool_results_injected_before_session(
         self, fake_reasoner: FakeReasoner, sample_session: Session
     ):
-        """With tool_results, message order is [system, tool_msg, session..., user]."""
+        """Invariant: message order is [system, tool_msg, session..., user]."""
         engine = ORE(fake_reasoner)
         tr = ToolResult(tool_name="echo", output="tool out", status="ok")
         engine.execute("user prompt", session=sample_session, tool_results=[tr])
@@ -132,8 +133,9 @@ class TestOREExecute:
         assert msgs[4].role == "user"
         assert msgs[4].content == "user prompt"
 
+    @pytest.mark.invariant
     def test_tool_results_not_stored_in_session(self, fake_reasoner: FakeReasoner):
-        """Tool result messages are turn-scoped; session only gets user + assistant."""
+        """Invariant: tool results are turn-scoped; session only gets user + assistant."""
         engine = ORE(fake_reasoner)
         session = Session()
         tr = ToolResult(tool_name="echo", output="x", status="ok")
@@ -238,8 +240,9 @@ class TestSkillContextInjection:
         assert msgs[5].role == "user"
         assert msgs[5].content == "prompt"
 
+    @pytest.mark.invariant
     def test_skill_context_not_stored_in_session(self, fake_reasoner: FakeReasoner):
-        """Skill messages are turn-scoped; session only gets user + assistant."""
+        """Invariant: skill context is turn-scoped; session only gets user + assistant."""
         engine = ORE(fake_reasoner)
         session = Session()
         engine.execute(

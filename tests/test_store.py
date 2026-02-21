@@ -4,14 +4,33 @@ import json
 
 import pytest
 
-from ore.store import FileSessionStore
+from ore.store import FileSessionStore, _session_to_dict
 from ore.types import Message, Session
+
+# Session file JSON shape (interface lock). Top-level and message keys.
+SESSION_TOP_KEYS = frozenset({"id", "created_at", "messages"})
+SESSION_MESSAGE_KEYS = frozenset({"role", "content", "id", "timestamp"})
 
 
 @pytest.fixture
 def store(tmp_path):
     """FileSessionStore backed by a temp directory."""
     return FileSessionStore(root=tmp_path)
+
+
+@pytest.mark.invariant
+def test_session_serialization_exact_keys():
+    """Invariant: serialized session has exact top-level and message keys."""
+    session = Session()
+    session.messages.append(Message(role="user", content="hi"))
+    data = _session_to_dict(session)
+    assert (
+        set(data.keys()) == SESSION_TOP_KEYS
+    ), f"Session top-level keys expected {SESSION_TOP_KEYS}, got {set(data.keys())}"
+    for msg in data["messages"]:
+        assert (
+            set(msg.keys()) == SESSION_MESSAGE_KEYS
+        ), f"Message keys expected {SESSION_MESSAGE_KEYS}, got {set(msg.keys())}"
 
 
 class TestFileSessionStore:

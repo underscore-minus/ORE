@@ -65,6 +65,21 @@ class TestGate:
         assert "filesystem-read" in result.metadata["checked_permissions"]
 
 
+# Permission enum exact values (interface lock). No removals; additions allowed.
+PERMISSION_VALUES = frozenset(
+    {"filesystem-read", "filesystem-write", "shell", "network"}
+)
+
+
+@pytest.mark.invariant
+def test_permission_enum_exact_values():
+    """Invariant: Permission enum has exactly these four values."""
+    actual = {p.value for p in Permission}
+    assert (
+        actual == PERMISSION_VALUES
+    ), f"Permission values expected {PERMISSION_VALUES}, got {actual}"
+
+
 @pytest.mark.invariant
 def test_denied_tool_never_executes():
     """Invariant: when gate denies, tool.run() is never called."""

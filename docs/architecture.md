@@ -1,6 +1,6 @@
-# ORE Architecture (v0.9)
+# ORE Architecture (v0.9.1)
 
-**Version**: v0.9 (Chainable Execution Artifacts)
+**Version**: v0.9.1 (Interface Lock — Chainable Execution Artifacts)
 **Language**: Python 3.10 (PEP 8, `black`-formatted)
 **Core idea**: An *irreducible loop* — **Input → Reasoner → Output** — run locally via Ollama.
 

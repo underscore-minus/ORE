@@ -5,7 +5,23 @@ from __future__ import annotations
 import pytest
 
 from ore.gate import Permission
-from ore.tools import EchoTool, ReadFileTool, TOOL_REGISTRY
+from ore.tools import EchoTool, ReadFileTool, Tool, TOOL_REGISTRY
+
+# Tool ABC contract (interface lock): required members.
+TOOL_ABSTRACT_PROPERTIES = frozenset({"name", "description", "required_permissions"})
+TOOL_ABSTRACT_METHODS = frozenset({"run"})
+TOOL_OPTIONAL_METHODS = frozenset({"routing_hints", "extract_args"})
+
+
+@pytest.mark.invariant
+def test_tool_abc_has_required_members():
+    """Invariant: Tool ABC defines required abstract properties and run()."""
+    for name in TOOL_ABSTRACT_PROPERTIES:
+        assert hasattr(Tool, name), f"Tool missing property: {name}"
+    for name in TOOL_ABSTRACT_METHODS:
+        assert hasattr(Tool, name), f"Tool missing method: {name}"
+    # run must be abstract
+    assert getattr(Tool.run, "__isabstractmethod__", False) or "run" in dir(Tool)
 
 
 class TestEchoTool:

@@ -1,10 +1,12 @@
 """
-ORE: Orchestrated Reasoning Engine v0.9.
+ORE: Orchestrated Reasoning Engine.
 Irreducible loop: Input -> Reasoner -> Output. Tools (v0.6) run pre-reasoning, gated.
 Routing (v0.7) selects tools by intent when --route is used.
 Skills (v0.8) inject filesystem-based instructions into context on-demand.
 Artifacts (v0.9) enable chainable execution via --artifact-out / --artifact-in.
 """
+
+from ._version import __version__
 
 from .cli import run
 from .core import ORE
@@ -39,6 +41,7 @@ from .types import (
 )
 
 __all__ = [
+    "__version__",
     "ARTIFACT_VERSION",
     "ExecutionArtifact",
     "run",

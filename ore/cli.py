@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ._version import __version__
 from .core import ORE
 from .gate import Gate, GateError, Permission
 from .models import default_model, fetch_models
@@ -250,8 +251,9 @@ def _stream_turn(
     return response
 
 
-def run() -> None:
-    parser = argparse.ArgumentParser(description="ORE v0.9 CLI")
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser. Exposed for invariant tests (frozen surface)."""
+    parser = argparse.ArgumentParser(description=f"ORE {__version__} CLI")
     parser.add_argument(
         "prompt",
         type=str,
@@ -390,6 +392,11 @@ def run() -> None:
             "Mutually exclusive with prompt arg and REPL modes."
         ),
     )
+    return parser
+
+
+def run() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
 
     if args.route and args.tool:
@@ -530,7 +537,7 @@ def run() -> None:
     engine = ORE(AyaReasoner(model_id=model_id))
 
     if args.interactive:
-        print(f"ORE v0.9 interactive (model: {model_id})")
+        print(f"ORE {__version__} interactive (model: {model_id})")
         print("Each turn is stateless. Type quit or exit to leave.\n")
         while True:
             try:
@@ -582,7 +589,9 @@ def run() -> None:
         else:
             session = Session()
         save_name = args.save_session
-        print(f"ORE v0.9 conversational (model: {model_id} | session: {session.id})")
+        print(
+            f"ORE {__version__} conversational (model: {model_id} | session: {session.id})"
+        )
         if args.resume_session:
             print(f"  Resumed: {args.resume_session}")
         if save_name:
@@ -653,7 +662,7 @@ def run() -> None:
         else:
             tool_results = _get_tool_results(args.tool, args.tool_arg or None, gate)
         if not args.json and args.artifact_out != "-":
-            print("--- ORE v0.9: Reasoning ---")
+            print(f"--- ORE {__version__}: Reasoning ---")
         if args.stream:
             _stream_turn(
                 engine,
