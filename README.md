@@ -65,6 +65,16 @@ and each layer is still visible.
 **Requires:** Python 3.10, [Ollama](https://ollama.com) running locally with at
 least one model pulled.
 
+**Install as a dependency** (from another project):
+
+```bash
+pip install "git+https://github.com/underscore-minus/ORE.git@v1.0.0"
+# or latest from main:
+# pip install "git+https://github.com/underscore-minus/ORE.git"
+```
+
+**Run from source** (clone, then CLI):
+
 ```bash
 # Clone
 git clone https://github.com/underscore-minus/ORE.git
@@ -75,8 +85,8 @@ python3.10 -m venv .venv
 source .venv/bin/activate       # macOS / Linux
 # .venv\Scripts\activate        # Windows
 
-# Install runtime dependencies
-pip install -r requirements.txt
+# Install the package (editable for development)
+pip install -e .
 
 # Pull a model (if you haven't already)
 ollama pull llama3.2
@@ -201,6 +211,45 @@ python main.py "First prompt" --artifact-out - | python main.py --artifact-in -
 ```
 
 Artifact schema: see `docs/artifact-schema.md`.
+
+### Using ORE as a library
+
+Import `ore` as a module first so that `ore.__version__` and other module-level
+attributes are available; then import the names you need.
+
+```python
+import ore
+from ore import ORE, AyaReasoner, default_model
+
+# One-shot: engine + one turn
+model_id = default_model() or "llama3.2"  # use your Ollama model name
+engine = ORE(AyaReasoner(model_id=model_id))
+response = engine.execute("What is an irreducible loop?")
+print(response.content)
+```
+
+**With a session** (conversational turns):
+
+```python
+import ore
+from ore import ORE, AyaReasoner, Session, default_model
+
+model_id = default_model() or "llama3.2"
+engine = ORE(AyaReasoner(model_id=model_id))
+session = Session()
+
+r1 = engine.execute("My name is Alice.", session=session)
+r2 = engine.execute("What is my name?", session=session)
+print(r2.content)  # refers to prior turn
+```
+
+**API:** `engine.execute(user_prompt, session=None, tool_results=None, skill_context=None)` returns a `Response`. Use `engine.execute_stream(...)` for token-by-token streaming (same args, yields `str` chunks then returns the final `Response`). Full signatures and data contracts: `docs/interface-lock.md` §6 and §7.
+
+**Message order** (how the engine builds the turn):  
+`[system] + [skill_context] + [tool_results] + session.messages + [user]`.  
+Skill and tool data are turn-scoped and never stored in the session. Details: `docs/architecture.md` and `docs/skills.md`.
+
+**Full public API:** `ore/__init__.py` `__all__` and `docs/interface-lock.md` §12.
 
 ---
 
