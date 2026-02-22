@@ -42,12 +42,6 @@ from .types import (
 # Commands that exit any REPL mode (case-insensitive)
 _REPL_EXIT_COMMANDS = frozenset({"quit", "exit"})
 
-# Aya persona: owned by the CLI (product), not by the engine.
-AYA_SYSTEM_PROMPT = (
-    "You are Aya, the central AI assistant of the ORE. "
-    "You are intuitive, transparent, and focused on structured reasoning."
-)
-
 
 def _validate_output_path(path: str) -> Path:
     """
@@ -289,7 +283,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         nargs="?",
         default=None,
-        help="User input for Aya (omit when using --list-models, --interactive, or --conversational)",
+        help="User prompt (omit when using --list-models, --interactive, or --conversational)",
     )
     parser.add_argument(
         "--model",
@@ -421,6 +415,13 @@ def _build_parser() -> argparse.ArgumentParser:
             "Read artifact from PATH (or - for stdin) and run single-turn with its input. "
             "Mutually exclusive with prompt arg and REPL modes."
         ),
+    )
+    parser.add_argument(
+        "--system",
+        type=str,
+        default="",
+        metavar="PROMPT",
+        help="System prompt for the reasoner (default: none)",
     )
     return parser
 
@@ -564,7 +565,7 @@ def run() -> None:
         if not _repl_mode and not args.json and args.artifact_out != "-":
             print(f"Using model: {model_id}\n")
 
-    engine = ORE(AyaReasoner(model_id=model_id), system_prompt=AYA_SYSTEM_PROMPT)
+    engine = ORE(AyaReasoner(model_id=model_id), system_prompt=args.system)
 
     if args.interactive:
         print(f"ORE {__version__} interactive (model: {model_id})")

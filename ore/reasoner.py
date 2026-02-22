@@ -26,7 +26,7 @@ class Reasoner(ABC):
 
 
 class AyaReasoner(Reasoner):
-    """Default reasoner: wraps Ollama chat for the ORE loop. No Aya persona here—that lives in core."""
+    """Default reasoner: wraps Ollama chat for the ORE loop. No persona here—consumers provide it (e.g. CLI via `--system`)."""
 
     def __init__(self, model_id: str = "llama2") -> None:
         self._client = Client()

@@ -30,8 +30,9 @@ Source: `ore/cli.py` — `_build_parser()`.
 | `--list-skills` | — | store_true | `False` | — |
 | `--artifact-out` | — | str, nargs="?" | `None` (const=`"-"`) | `PATH` |
 | `--artifact-in` | — | str | `None` | `PATH` |
+| `--system` | — | str | `""` | `PROMPT` |
 
-**Total: 20 flags (1 positional + 19 named).** New flags may be added; existing flags must not be removed or changed in type/default.
+**Total: 21 flags (1 positional + 20 named).** New flags may be added; existing flags must not be removed or changed in type/default.
 
 ---
 

@@ -98,6 +98,12 @@ At this point:
 
 The engine does not grow. It hosts growth.
 
+**v1.1.1 — CLI Persona Agnostic**
+
+- Removed hardcoded Aya system prompt from CLI.
+- Added `--system` flag; default empty.
+- Consumers supply persona explicitly. `python main.py "prompt" --system "You are Aya..."` restores prior behavior.
+
 ---
 
 ## In Progress

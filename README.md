@@ -1,6 +1,6 @@
 # ORE — Orchestrated Reasoning Engine
 
-**v1.0.1 — The Mainframe**
+**v1.1.1 — The Mainframe**
 
 ---
 
@@ -68,7 +68,7 @@ least one model pulled.
 **Install as a dependency** (from another project):
 
 ```bash
-pip install "git+https://github.com/underscore-minus/ORE.git@v1.0.1"
+pip install "git+https://github.com/underscore-minus/ORE.git@v1.1.1"
 # or latest from main:
 # pip install "git+https://github.com/underscore-minus/ORE.git"
 ```
@@ -132,6 +132,9 @@ python main.py "prompt" --stream
 
 # Verbose: show response metadata (ID, model, token counts)
 python main.py "prompt" --verbose
+
+# System prompt for the reasoner (default: none)
+python main.py "who are you?" --system "You are a helpful assistant."
 
 # Read prompt from stdin
 echo "What is ORE?" | python main.py

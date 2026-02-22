@@ -41,6 +41,7 @@ _CLI_FLAG_SURFACE = {
     "list_skills": False,
     "artifact_out": None,
     "artifact_in": None,
+    "system": "",
 }
 
 
@@ -102,6 +103,14 @@ class TestArgParsing:
     def test_json_flag(self):
         ns = _parse(["hi", "-j"])
         assert ns.json
+
+    def test_system_flag(self):
+        ns = _parse(["hi", "--system", "You are a helpful assistant."])
+        assert ns.system == "You are a helpful assistant."
+
+    def test_system_default_empty(self):
+        ns = _parse(["hi"])
+        assert ns.system == ""
 
 
 class TestModeValidation:

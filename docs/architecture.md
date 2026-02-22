@@ -42,12 +42,12 @@ Any change that adds implicit history (storing state inside `ORE` without passin
   - **User command** → `python main.py "prompt"` (or CLI options; prompt may be piped via stdin when not a TTY).
   - **`main.py`** loads environment (`.env` via `python-dotenv`) and delegates to CLI.
   - **`ore.cli`**:
-    - Parses CLI arguments (including `--tool`, `--tool-arg`, `--list-tools`, `--grant` for v0.6; `--interactive`, `--conversational`, `--model`, `--list-models`, `--stream`/`-s`, `--verbose`/`-v`, `--json`/`-j`).
+    - Parses CLI arguments (including `--tool`, `--tool-arg`, `--list-tools`, `--grant` for v0.6; `--interactive`, `--conversational`, `--model`, `--list-models`, `--stream`/`-s`, `--verbose`/`-v`, `--json`/`-j`, `--system`).
     - Validates mutual exclusivity of `--interactive` and `--conversational`.
     - For `--tool`: resolves tool from registry, runs through gate, passes `tool_results` to engine.
     - Optionally lists available Ollama models.
     - Chooses a model (explicit `--model` or auto-selected default).
-    - Instantiates the orchestrator `ORE` with an `AyaReasoner` and a system prompt (e.g. Aya persona; owned by the CLI).
+    - Instantiates `ORE` with an `AyaReasoner` and a system prompt (from `--system` flag; default empty). No hardcoded persona.
     - Runs the appropriate mode:
       - Single-turn: calls `engine.execute(prompt)` or `engine.execute_stream(prompt)` when `--stream`; reads prompt from stdin when no positional arg and stdin is not a TTY; outputs JSON when `--json`.
       - Interactive loop (`-i`): calls `engine.execute(line)` or `engine.execute_stream(line)` per turn — no session.
