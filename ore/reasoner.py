@@ -5,8 +5,6 @@ Reasoner interface and Aya default implementation using Ollama (local LLM).
 from abc import ABC, abstractmethod
 from typing import Generator, List
 
-from ollama import Client
-
 from .types import Message, Response
 
 
@@ -29,6 +27,8 @@ class AyaReasoner(Reasoner):
     """Default reasoner: wraps Ollama chat for the ORE loop. No persona here—consumers provide it (e.g. CLI via `--system`)."""
 
     def __init__(self, model_id: str = "llama2") -> None:
+        from ollama import Client
+
         self._client = Client()
         self.model_id = model_id
 

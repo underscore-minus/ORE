@@ -22,6 +22,7 @@ from .core import ORE
 from .gate import Gate, GateError, Permission
 from .models import default_model, fetch_models
 from .reasoner import AyaReasoner
+from .reasoner_deepseek import DeepSeekReasoner
 from .router import RuleRouter, build_targets_from_registry
 from .skills import (
     build_skill_registry,
@@ -293,6 +294,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Ollama model name (default: first available, e.g. llama3.2)",
     )
     parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["ollama", "deepseek"],
+        default="ollama",
+        help="Reasoner backend: ollama (local) or deepseek (API); default ollama",
+    )
+    parser.add_argument(
         "--list-models",
         action="store_true",
         help="List available Ollama models and exit",
@@ -475,6 +483,11 @@ def run() -> None:
             )
 
     if args.list_models:
+        if args.backend == "deepseek":
+            print(
+                "DeepSeek backend uses --model to specify the model (default: deepseek-chat)."
+            )
+            sys.exit(0)
         models = fetch_models()
         if not models:
             print("No Ollama models found. Install one with e.g. ollama pull llama3.2")
@@ -556,16 +569,29 @@ def run() -> None:
                 "prompt is required (or use --list-models, --list-tools, --interactive, or --conversational)"
             )
 
-    model_id = args.model
-    if model_id is None:
-        model_id = default_model()
-        if not model_id:
-            print("No Ollama models found. Install one with e.g. ollama pull llama3.2")
-            sys.exit(1)
-        if not _repl_mode and not args.json and args.artifact_out != "-":
-            print(f"Using model: {model_id}\n")
+    if args.backend == "deepseek":
+        model_id = args.model or "deepseek-chat"
+    else:
+        model_id = args.model
+        if model_id is None:
+            model_id = default_model()
+            if not model_id:
+                print(
+                    "No Ollama models found. Install one with e.g. ollama pull llama3.2"
+                )
+                sys.exit(1)
+    if not _repl_mode and not args.json and args.artifact_out != "-":
+        print(f"Using model: {model_id}\n")
 
-    engine = ORE(AyaReasoner(model_id=model_id), system_prompt=args.system)
+    if args.backend == "deepseek":
+        try:
+            reasoner = DeepSeekReasoner(model_id=model_id)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(1)
+    else:
+        reasoner = AyaReasoner(model_id=model_id)
+    engine = ORE(reasoner, system_prompt=args.system)
 
     if args.interactive:
         print(f"ORE {__version__} interactive (model: {model_id})")

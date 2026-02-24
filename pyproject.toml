@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ore"
-version = "1.1.1"
+version = "1.2.0"
 description = "ORE: Orchestrated Reasoning Engine — CLI and library for local reasoning with tools, routing, and skills."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "ollama>=0.3.0",
+    "openai>=1.0.0",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
 ]

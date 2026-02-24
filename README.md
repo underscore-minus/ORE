@@ -1,14 +1,14 @@
 # ORE — Orchestrated Reasoning Engine
 
-**v1.1.1 — The Mainframe**
+**v1.2.0 — The Mainframe**
 
 ---
 
 ## What ORE Is
 
 ORE is a minimal, local-first reasoning engine built around one irreducible loop:
-**Input → Reasoner → Output**. It runs via [Ollama](https://ollama.com), keeps all
-state explicit and visible, and enforces that every turn produces exactly one
+**Input → Reasoner → Output**. It supports multiple backends: [Ollama](https://ollama.com) (local)
+and DeepSeek (API). State is explicit and visible; every turn produces exactly one
 reasoner call. Nothing is hidden: sessions are passed as arguments, tool results
 are turn-scoped and never stored, and routing decisions are printed to stderr. ORE
 is the mainframe — the stable, auditable primitive that agents, workflows, and
@@ -57,18 +57,21 @@ and each layer is still visible.
 | v0.9 | Chainable execution artifacts: `--artifact-out` / `--artifact-in`; data-only chaining. |
 | v0.9.1 | Interface lock: CLI flags, JSON schema, exit codes, and `__all__` frozen. |
 | v1.0 | The Mainframe: version declaration, docs cleanup, structurally complete. |
+| v1.1.1 | CLI persona agnostic: `--system` flag; default empty; no hardcoded Aya prompt. |
+| v1.2.0 | DeepSeek backend: `--backend deepseek`, `DeepSeekReasoner`, `DEEPSEEK_API_KEY` env. |
 
 ---
 
 ## Installation
 
-**Requires:** Python 3.10, [Ollama](https://ollama.com) running locally with at
-least one model pulled.
+**Requires:** Python 3.10. For the default **Ollama** backend: [Ollama](https://ollama.com) running
+locally with at least one model pulled. For the **DeepSeek** backend: set the
+`DEEPSEEK_API_KEY` environment variable (see Key flags below).
 
 **Install as a dependency** (from another project):
 
 ```bash
-pip install "git+https://github.com/underscore-minus/ORE.git@v1.1.1"
+pip install "git+https://github.com/underscore-minus/ORE.git@v1.2.0"
 # or latest from main:
 # pip install "git+https://github.com/underscore-minus/ORE.git"
 ```
@@ -118,10 +121,15 @@ pip install -r requirements-dev.txt
 ### Key flags
 
 ```bash
-# Model selection
-python main.py "prompt" --model llama3.2
+# Backend: ollama (local, default) or deepseek (API; requires DEEPSEEK_API_KEY)
+python main.py "prompt" --backend ollama
+python main.py "prompt" --backend deepseek   # uses DEEPSEEK_API_KEY env var
 
-# List available Ollama models
+# Model selection (--model applies to the chosen backend)
+python main.py "prompt" --model llama3.2     # Ollama
+python main.py "prompt" --backend deepseek --model deepseek-chat   # DeepSeek default
+
+# List available Ollama models (Ollama backend only)
 python main.py --list-models
 
 # Structured JSON output (single-turn only)
@@ -222,14 +230,16 @@ attributes are available; then import the names you need.
 
 ```python
 import ore
-from ore import ORE, AyaReasoner, default_model
+from ore import ORE, AyaReasoner, DeepSeekReasoner, default_model
 
-# One-shot: engine + one turn (consumer provides system prompt)
-model_id = default_model() or "llama3.2"  # use your Ollama model name
-system_prompt = "You are a helpful assistant."  # your persona / instructions
-engine = ORE(AyaReasoner(model_id=model_id), system_prompt=system_prompt)
+# One-shot with Ollama (default backend)
+model_id = default_model() or "llama3.2"
+engine = ORE(AyaReasoner(model_id=model_id), system_prompt="You are a helpful assistant.")
 response = engine.execute("What is an irreducible loop?")
 print(response.content)
+
+# Or with DeepSeek (set DEEPSEEK_API_KEY in the environment)
+# engine = ORE(DeepSeekReasoner(model_id="deepseek-chat"), system_prompt="...")
 ```
 
 **With a session** (conversational turns):
@@ -238,7 +248,7 @@ print(response.content)
 import ore
 from ore import ORE, AyaReasoner, Session, default_model
 
-model_id = default_model() or "llama3.2"
+model_id = default_model() or "llama3.2"  # or use DeepSeekReasoner with DEEPSEEK_API_KEY
 engine = ORE(AyaReasoner(model_id=model_id), system_prompt="You are a helpful assistant.")
 session = Session()
 
@@ -265,7 +275,7 @@ passes a clean message list to `ore/core.py` (the orchestrator), which construct
 the turn: consumer-provided system prompt + optional skill context + optional tool results + optional
 session history + user message. The orchestrator calls a `Reasoner` exactly once
 and returns a `Response`. `ore/reasoner.py` holds the abstract `Reasoner` base
-class and the default `AyaReasoner` (Ollama-backed). All data flows through typed
+class and `AyaReasoner` (Ollama); `ore/reasoner_deepseek.py` provides `DeepSeekReasoner` (DeepSeek API). All data flows through typed
 contracts in `ore/types.py`. Session persistence lives in `ore/store.py`. Tools,
 their permission gate, the intent router, and the skill loader are in
 `ore/tools.py`, `ore/gate.py`, `ore/router.py`, and `ore/skills.py` respectively.
@@ -311,6 +321,11 @@ session, and CLI layer have no knowledge of the backend and require no changes.
 Reasoners must be persona-agnostic: they receive an ordered list of `Message`
 objects and return a `Response`, nothing more.
 
+**Example backends:** `AyaReasoner` (Ollama, in `ore/reasoner.py`) and
+`DeepSeekReasoner` (DeepSeek API, in `ore/reasoner_deepseek.py`). The DeepSeek
+backend requires the `DEEPSEEK_API_KEY` environment variable; the CLI uses
+`--backend deepseek` and exits with a clear error if the key is missing.
+
 ---
 
 ## Design Principles
@@ -340,7 +355,7 @@ pytest -m invariant
 black --check .
 ```
 
-178 tests, 47 invariant. CI runs on push/PR to `main`: Python 3.10,
+193 tests (including invariants). CI runs on push/PR to `main`: Python 3.10,
 `black --check`, then `pytest`. See `.github/workflows/ci.yml`.
 
 ---

@@ -63,7 +63,7 @@ class TestAyaReasoner:
         fake_client = MagicMock()
         fake_client.chat.return_value = _make_ollama_response("hello back")
 
-        with patch("ore.reasoner.Client", return_value=fake_client):
+        with patch("ollama.Client", return_value=fake_client):
             reasoner = AyaReasoner(model_id="test-model")
 
         msgs = [
@@ -91,7 +91,7 @@ class TestAyaReasoner:
             prompt_eval_duration=100,
         )
 
-        with patch("ore.reasoner.Client", return_value=fake_client):
+        with patch("ollama.Client", return_value=fake_client):
             reasoner = AyaReasoner(model_id="m")
 
         resp = reasoner.reason([Message(role="user", content="x")])
@@ -121,7 +121,7 @@ class TestAyaReasoner:
         fake_client = MagicMock()
         fake_client.chat.return_value = iter(chunks)
 
-        with patch("ore.reasoner.Client", return_value=fake_client):
+        with patch("ollama.Client", return_value=fake_client):
             reasoner = AyaReasoner(model_id="m")
 
         gen = reasoner.stream_reason([Message(role="user", content="hi")])

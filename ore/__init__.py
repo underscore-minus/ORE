@@ -13,6 +13,7 @@ from .core import ORE
 from .gate import Gate, GateError, Permission
 from .models import default_model, fetch_models
 from .reasoner import AyaReasoner, Reasoner
+from .reasoner_deepseek import DeepSeekReasoner
 from .router import (
     RuleRouter,
     Router,
@@ -48,6 +49,7 @@ __all__ = [
     "ORE",
     "Reasoner",
     "AyaReasoner",
+    "DeepSeekReasoner",
     "Message",
     "Response",
     "RoutingDecision",
