@@ -84,9 +84,7 @@ def test_stream_reason_yields_chunks_and_returns_response():
     )
     chunk3 = SimpleNamespace(
         choices=[SimpleNamespace(delta=SimpleNamespace(content=None))],
-        usage=SimpleNamespace(
-            prompt_tokens=2, completion_tokens=2, total_tokens=4
-        ),
+        usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2, total_tokens=4),
     )
     fake_client = MagicMock()
     fake_client.chat.completions.create.return_value = iter([chunk1, chunk2, chunk3])
