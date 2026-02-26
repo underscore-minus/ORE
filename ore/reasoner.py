@@ -2,6 +2,7 @@
 Reasoner interface and Aya default implementation using Ollama (local LLM).
 """
 
+import time
 from abc import ABC, abstractmethod
 from typing import Generator, List
 
@@ -36,7 +37,9 @@ class AyaReasoner(Reasoner):
         # Convert ORE Message objects to Ollama API format (role + content only)
         payload = [{"role": m.role, "content": m.content} for m in messages]
 
+        start = time.perf_counter()
         raw = self._client.chat(model=self.model_id, messages=payload)
+        duration_ms = int((time.perf_counter() - start) * 1000)
 
         # Ollama ChatResponse: message.content; optional eval_count, prompt_eval_count, eval_duration
         msg = getattr(raw, "message", None)
@@ -53,17 +56,28 @@ class AyaReasoner(Reasoner):
             val = getattr(raw, key, None)
             if val is not None:
                 metadata[key] = val
+        # Normalized token keys for AIA (same shape as DeepSeek/OpenAI usage)
+        if "prompt_eval_count" in metadata:
+            metadata["prompt_tokens"] = metadata["prompt_eval_count"]
+        if "eval_count" in metadata:
+            metadata["completion_tokens"] = metadata["eval_count"]
+        if "prompt_tokens" in metadata and "completion_tokens" in metadata:
+            metadata["total_tokens"] = (
+                metadata["prompt_tokens"] + metadata["completion_tokens"]
+            )
 
         return Response(
             content=content,
             model_id=self.model_id,
             metadata=metadata,
+            duration_ms=duration_ms,
         )
 
     def stream_reason(self, messages: List[Message]) -> Generator[str, None, Response]:
         payload = [{"role": m.role, "content": m.content} for m in messages]
         full_content: list[str] = []
         metadata: dict = {}
+        start = time.perf_counter()
         for chunk in self._client.chat(
             model=self.model_id, messages=payload, stream=True
         ):
@@ -81,8 +95,19 @@ class AyaReasoner(Reasoner):
                 val = getattr(chunk, key, None)
                 if val is not None:
                     metadata[key] = val
+        # Normalized token keys for AIA (same shape as DeepSeek/OpenAI usage)
+        if "prompt_eval_count" in metadata:
+            metadata["prompt_tokens"] = metadata["prompt_eval_count"]
+        if "eval_count" in metadata:
+            metadata["completion_tokens"] = metadata["eval_count"]
+        if "prompt_tokens" in metadata and "completion_tokens" in metadata:
+            metadata["total_tokens"] = (
+                metadata["prompt_tokens"] + metadata["completion_tokens"]
+            )
+        duration_ms = int((time.perf_counter() - start) * 1000)
         return Response(
             content="".join(full_content),
             model_id=self.model_id,
             metadata=metadata,
+            duration_ms=duration_ms,
         )

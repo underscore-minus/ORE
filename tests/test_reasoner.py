@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 from typing import List
 from unittest.mock import MagicMock, patch
@@ -100,6 +101,81 @@ class TestAyaReasoner:
         assert resp.metadata["eval_duration"] == 200
         assert resp.metadata["prompt_eval_duration"] == 100
 
+    def test_reason_normalizes_ollama_token_fields_in_metadata(self):
+        """Ollama native fields get normalized prompt_tokens, completion_tokens, total_tokens."""
+        fake_client = MagicMock()
+        fake_client.chat.return_value = _make_ollama_response(
+            content="ok",
+            eval_count=50,
+            prompt_eval_count=30,
+            eval_duration=0,
+            prompt_eval_duration=0,
+        )
+
+        with patch("ollama.Client", return_value=fake_client):
+            reasoner = AyaReasoner(model_id="m")
+
+        resp = reasoner.reason([Message(role="user", content="x")])
+        assert resp.metadata["prompt_tokens"] == 30
+        assert resp.metadata["completion_tokens"] == 50
+        assert resp.metadata["total_tokens"] == 80
+        # Native fields unchanged
+        assert resp.metadata["prompt_eval_count"] == 30
+        assert resp.metadata["eval_count"] == 50
+
+    def test_reason_sets_duration_ms(self):
+        """reason() sets duration_ms from wall-clock timing of API call."""
+        fake_client = MagicMock()
+
+        def chat_slow(*args, **kwargs):
+            time.sleep(0.02)
+            return _make_ollama_response("ok")
+
+        fake_client.chat.side_effect = chat_slow
+
+        with patch("ollama.Client", return_value=fake_client):
+            reasoner = AyaReasoner(model_id="m")
+
+        resp = reasoner.reason([Message(role="user", content="x")])
+        assert resp.duration_ms > 0
+
+    def test_stream_reason_sets_duration_ms(self):
+        """stream_reason() sets duration_ms from wall-clock timing."""
+        chunks = [
+            SimpleNamespace(
+                message=SimpleNamespace(content="a"),
+                eval_count=None,
+                prompt_eval_count=None,
+                eval_duration=None,
+                prompt_eval_duration=None,
+            ),
+            SimpleNamespace(
+                message=SimpleNamespace(content="b"),
+                eval_count=1,
+                prompt_eval_count=1,
+                eval_duration=1,
+                prompt_eval_duration=1,
+            ),
+        ]
+        fake_client = MagicMock()
+
+        def chat_stream(*args, **kwargs):
+            time.sleep(0.02)
+            return iter(chunks)
+
+        fake_client.chat.side_effect = chat_stream
+
+        with patch("ollama.Client", return_value=fake_client):
+            reasoner = AyaReasoner(model_id="m")
+
+        gen = reasoner.stream_reason([Message(role="user", content="hi")])
+        try:
+            while True:
+                next(gen)
+        except StopIteration as exc:
+            resp = exc.value
+        assert resp.duration_ms > 0
+
     def test_stream_reason_yields_chunks(self):
         # Simulate Ollama streaming: list of chunk objects
         chunks = [
@@ -135,3 +211,6 @@ class TestAyaReasoner:
         assert collected == ["hello", " world"]
         assert resp.content == "hello world"
         assert resp.metadata["eval_count"] == 10
+        assert resp.metadata["prompt_tokens"] == 5
+        assert resp.metadata["completion_tokens"] == 10
+        assert resp.metadata["total_tokens"] == 15
