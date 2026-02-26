@@ -25,7 +25,7 @@ from ore.types import (
 # Frozen field sets (interface lock). New fields may be added; these must exist.
 DATACLASS_FIELD_CONTRACTS = {
     Message: frozenset({"role", "content", "id", "timestamp"}),
-    Response: frozenset({"content", "model_id", "id", "timestamp", "metadata"}),
+    Response: frozenset({"content", "model_id", "id", "timestamp", "metadata", "duration_ms"}),
     Session: frozenset({"messages", "id", "created_at"}),
     ToolResult: frozenset(
         {"tool_name", "output", "status", "id", "timestamp", "metadata"}
@@ -94,6 +94,12 @@ class TestResponse:
         uuid.UUID(resp.id)
         assert isinstance(resp.timestamp, float)
         assert resp.metadata == {}
+        assert resp.duration_ms == 0
+
+    def test_response_constructed_without_duration_ms_has_zero(self):
+        """Response built without duration_ms defaults to 0 (additive)."""
+        resp = Response(content="x", model_id="m")
+        assert resp.duration_ms == 0
 
     def test_metadata(self):
         meta = {"eval_count": 42, "prompt_eval_count": 10}

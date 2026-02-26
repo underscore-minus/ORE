@@ -45,6 +45,7 @@ class Response:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    duration_ms: int = 0  # v1.3: wall-clock time of API call in ms; 0 if not set
 
 
 @dataclass

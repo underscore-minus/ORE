@@ -4,6 +4,7 @@ Uses DEEPSEEK_API_KEY env var; fails with a clear error if missing.
 """
 
 import os
+import time
 from typing import Generator, List
 
 from openai import OpenAI
@@ -43,10 +44,12 @@ class DeepSeekReasoner(Reasoner):
     def reason(self, messages: List[Message]) -> Response:
         """Produce a single response from the given message list."""
         payload = [{"role": m.role, "content": m.content} for m in messages]
+        start = time.perf_counter()
         completion = self._client.chat.completions.create(
             model=self.model_id,
             messages=payload,
         )
+        duration_ms = int((time.perf_counter() - start) * 1000)
         choice = completion.choices[0] if completion.choices else None
         content = (choice.message.content or "") if choice and choice.message else ""
         metadata: dict = {}
@@ -62,11 +65,13 @@ class DeepSeekReasoner(Reasoner):
             content=content,
             model_id=self.model_id,
             metadata=metadata,
+            duration_ms=duration_ms,
         )
 
     def stream_reason(self, messages: List[Message]) -> Generator[str, None, Response]:
         """Stream response chunks, then return the full Response."""
         payload = [{"role": m.role, "content": m.content} for m in messages]
+        start = time.perf_counter()
         stream = self._client.chat.completions.create(
             model=self.model_id,
             messages=payload,
@@ -88,8 +93,10 @@ class DeepSeekReasoner(Reasoner):
                     metadata["completion_tokens"] = usage.completion_tokens
                 if getattr(usage, "total_tokens", None) is not None:
                     metadata["total_tokens"] = usage.total_tokens
+        duration_ms = int((time.perf_counter() - start) * 1000)
         return Response(
             content="".join(full_content),
             model_id=self.model_id,
             metadata=metadata,
+            duration_ms=duration_ms,
         )
