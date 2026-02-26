@@ -59,9 +59,7 @@ def test_reason_converts_messages():
 def test_reason_sets_duration_ms():
     """reason() sets duration_ms from wall-clock timing of API call."""
     fake_completion = MagicMock()
-    fake_completion.choices = [
-        MagicMock(message=MagicMock(content="hi"))
-    ]
+    fake_completion.choices = [MagicMock(message=MagicMock(content="hi"))]
     fake_completion.usage = MagicMock(
         prompt_tokens=1, completion_tokens=1, total_tokens=2
     )

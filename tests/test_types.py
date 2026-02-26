@@ -25,7 +25,9 @@ from ore.types import (
 # Frozen field sets (interface lock). New fields may be added; these must exist.
 DATACLASS_FIELD_CONTRACTS = {
     Message: frozenset({"role", "content", "id", "timestamp"}),
-    Response: frozenset({"content", "model_id", "id", "timestamp", "metadata", "duration_ms"}),
+    Response: frozenset(
+        {"content", "model_id", "id", "timestamp", "metadata", "duration_ms"}
+    ),
     Session: frozenset({"messages", "id", "created_at"}),
     ToolResult: frozenset(
         {"tool_name", "output", "status", "id", "timestamp", "metadata"}
